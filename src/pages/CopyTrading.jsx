@@ -208,7 +208,7 @@ export default function CopyTrading({ api }) {
                     <Badge col={statusColor[t.status] || C.muted}>{(t.status || "").toUpperCase()}</Badge>
                   </div>
                   <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>{t.provider_name || "—"}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11, marginBottom: 6 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, fontSize: 11, marginBottom: 6 }}>
                     <div><div style={{ color: C.muted, fontSize: 9 }}>ENTRY</div><span style={{ fontFamily: "monospace" }}>{fp(t.entry_price)}</span></div>
                     <div><div style={{ color: C.muted, fontSize: 9 }}>SL</div><span style={{ fontFamily: "monospace", color: C.red }}>{fp(t.stop_loss)}</span></div>
                     <div><div style={{ color: C.muted, fontSize: 9 }}>TP</div><span style={{ fontFamily: "monospace", color: C.green }}>{fp(t.take_profit)}</span></div>
