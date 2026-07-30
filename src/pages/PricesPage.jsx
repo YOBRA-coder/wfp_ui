@@ -52,10 +52,10 @@ export default function PricesPage({ api }) {
   const [copyTrade, setCopyTrade] = useState(null); // the specific trade Dashboard linked here to show progress for
   const loadChartRef = useRef(null);
   const mobile = useMobile();
-  const [selectedTradeId,setSelectedTradeId]=useState(() => searchParams.get("copyTradeId"));
+  const [selectedTradeId,setSelectedTradeId]=useState(() => searchParams.get("copyTradeId") || null);
 
   // Deep link from Dashboard: /prices?pair=EURUSD&copyTradeId=44 — show that trade's progress
-  const [copyTradeId, setCopyTradeId] = useState(() => searchParams.get("copyTradeId") || "");
+  //const [copyTradeId, setCopyTradeId] = useState(() => searchParams.get("copyTradeId") || null);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjSl, setAdjSl] = useState("");
   const [adjTp, setAdjTp] = useState("");
