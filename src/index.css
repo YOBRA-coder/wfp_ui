@@ -1,0 +1,15 @@
+/* Global polish — applies everywhere since this file was previously empty */
+* { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+::selection { background: #F0B42955; color: #fff; }
+
+/* Slim, dark, unobtrusive scrollbars to match the trading-terminal look */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1C2B38; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3f52; }
+* { scrollbar-width: thin; scrollbar-color: #1C2B38 transparent; }
+
+input, select, button { font-family: inherit; }
+
+a { color: inherit; }
