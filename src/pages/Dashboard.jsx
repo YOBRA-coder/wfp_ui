@@ -279,7 +279,7 @@ export default function Dashboard({ api }) {
 
                     <Card>
                         <SectionTitle>
-                            Active Copy Trades
+                            Active Copy Trades <Badge col={C.gold}>{copies.length}</Badge>
                         </SectionTitle>
 
                         {copies.length === 0 ? (
