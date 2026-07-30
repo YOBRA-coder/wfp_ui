@@ -31,7 +31,7 @@ export default function RiskDisclaimer({ api, onAccepted }) {
     }}>
       <div style={{
         background: C.surf, border: `1px solid ${C.border}`, borderRadius: 14,
-        maxWidth: 560, width: "100%", maxHeight: "88dvh", display: "flex", flexDirection: "column",
+        maxWidth: 560, width: "100%", maxHeight: "70dvh", display: "flex", flexDirection: "column",
         boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
       }}>
         <div style={{ padding: "18px 22px 12px", borderBottom: `1px solid ${C.border}` }}>

@@ -11,7 +11,7 @@ import { useCallback } from "react";
 const API = import.meta.env.VITE_API_URL || "http://localhost:8766";
 
 // wss:// when the API is https://, ws:// when it's http:// — always in sync with API.
-const WS_BASE = API.replace(/^http/, "ws");
+const WS_BASE = API.replace(/^https/, "wss");
 
 function useApi(token, onUnauthorized) {
   const req = useCallback(async (method, path, body) => {

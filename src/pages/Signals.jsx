@@ -22,7 +22,7 @@ export default function Signals({ api }) {
   const [sel,     setSel]     = useState(null);
   const [bars,    setBars]    = useState([]);
   const [busy,    setBusy]    = useState(false);
-  const [bulkP,   setBulkP]   = useState(["EURUSD","GBPUSD","USDJPY","GBPJPY"]);
+  const [bulkP,   setBulkP]   = useState(["EURUSD","GBPUSD","USDJPY","GBPJPY","USDCHF","AUDUSD","USDCAD","NZDUSD"]);
   const [bulkTf,  setBulkTf]  = useState(["H1","H4"]);
   const [minConf, setMinConf] = useState(0);
   const [dirF,    setDirF]    = useState("ALL");
