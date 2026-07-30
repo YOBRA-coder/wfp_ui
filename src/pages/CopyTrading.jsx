@@ -238,11 +238,11 @@ export default function CopyTrading({ api }) {
             </div>
           ) : (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "70px 50px 100px 85px 85px 75px 75px 75px 70px 60px 80px", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.border}`, fontSize: 9, color: C.muted, letterSpacing: 1, fontWeight: 700 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "70px 50px 100px 85px 85px 75px 75px 75px 75px 70px 60px 80px", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.border}`, fontSize: 9, color: C.muted, letterSpacing: 1, fontWeight: 700 }}>
                 {["PAIR","DIR","PROVIDER","ENTRY","SL","TP","LOT SIZE","P&L $","PIPS","STATUS","MODE",""].map(h => <span key={h}>{h}</span>)}
               </div>
               {trades.filter(t => t.status !== "pending_approval").map(t => (
-                <div key={t.id} onClick={() => viewChart(t)} style={{ display: "grid", gridTemplateColumns: "70px 50px 100px 85px 85px 75px 75px 75px 70px 60px 80px", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.border}20`, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+                <div key={t.id} onClick={() => viewChart(t)} style={{ display: "grid", gridTemplateColumns: "70px 50px 100px 85px 85px 75px 75px 75px 75px 70px 60px 80px", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.border}20`, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
                   <strong>{t.pair}</strong>
                   <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>
                   <span style={{ fontSize: 11, color: C.muted }}>{t.provider_name || "—"}</span>

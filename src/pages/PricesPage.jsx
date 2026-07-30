@@ -623,7 +623,6 @@ export default function PricesPage({ api }) {
             onTradeSelect={(trade)=> {
               setCopyTrade(trade);
               setSelectedTradeId(trade.id);
-              setCopyTradeId(trade.id);
               setAdjSl(String(trade.stop_loss ?? ""));
               setAdjTp(String(trade.take_profit ?? ""));
             }
