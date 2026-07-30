@@ -30,7 +30,6 @@ const PRICES_WS_URL = `${WS_BASE}/ws/prices?pairs=${MARKET_LIST_PAIRS.join(",")}
 
 export default function PricesPage({ api }) {
   const [searchParams] = useSearchParams();
-  const [selectedTradeId,setSelectedTradeId]=useState(() => searchParams.get("copyTradeId"));
   const [prices, setPrices] = useState([]);
   const [selP, setSelP] = useState(() => searchParams.get("pair") || "EURUSD");
   const [selTf, setSelTf] = useState("H1");
@@ -53,8 +52,10 @@ export default function PricesPage({ api }) {
   const [copyTrade, setCopyTrade] = useState(null); // the specific trade Dashboard linked here to show progress for
   const loadChartRef = useRef(null);
   const mobile = useMobile();
+  const [selectedTradeId,setSelectedTradeId]=useState(() => searchParams.get("copyTradeId"));
+
   // Deep link from Dashboard: /prices?pair=EURUSD&copyTradeId=44 — show that trade's progress
-  const [copyTradeId, setCopyTradeId] = useState(() => searchParams.get("copyTradeId"));
+  const [copyTradeId, setCopyTradeId] = useState(() => searchParams.get("copyTradeId") || "");
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjSl, setAdjSl] = useState("");
   const [adjTp, setAdjTp] = useState("");
