@@ -72,11 +72,11 @@ export default function AuthPage({ onLogin }) {
         <ErrBox msg={err} />
         <Btn col={C.gold} full onClick={submit} disabled={busy}>{busy ? "Please wait…" : tab === "login" ? "Sign In" : "Create Account"}</Btn>
 
-        <button onClick={fillDemo} style={{
+        <button onClick={() => { }} style={{
           width: "100%", marginTop: 12, background: "transparent", border: "none",
           color: C.muted, fontSize: 11, cursor: "pointer", textDecoration: "underline",
         }}>
-          Use demo credentials
+          Reset your password
         </button>
       </div>
     </div>
