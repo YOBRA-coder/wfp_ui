@@ -605,11 +605,11 @@ const TFS   = ["M1","M5","M15","M30","H1","H4","D1","W1"];
 // Broker-style quote precision — JPY crosses & metals trade in fewer decimals,
 // everything else uses the standard 4-decimal (fractional-pip) forex convention.
 function pairDecimals(pair) {
-  if (!pair) return 4;
+  if (!pair) return 5;
   if (pair.includes("JPY")) return 3;
   if (pair === "XAUUSD") return 2;
   if (pair === "BTCUSD") return 2;
-  return 4;
+  return 5;
 }
 
 export { ConfRing, CandleChart1, SigCard, PAIRS, FOREX_PAIRS, TFS, pairDecimals };
