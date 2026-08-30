@@ -820,7 +820,9 @@ function pairDecimals(pair) {
   if (pair === "XAUUSD") return 2;
   if (pair === "XAGUSD") return 3;
   if (pair === "BTCUSD") return 2;
-  return 4;
+  if (pair === "ETHUSD") return 2;
+  if (pair === "USDZAR" || pair === "USDMXN" || pair === "USDTRY") return 4;
+  return 5;
 }
 
 export { ConfRing, CandleChart1, SigCard, PAIRS, FOREX_PAIRS, TFS, pairDecimals };

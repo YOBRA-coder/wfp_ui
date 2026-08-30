@@ -143,12 +143,77 @@ export default function AuthPage({ onLogin }) {
             <ErrBox msg={err} />
             <Btn col={C.gold} full onClick={submit} disabled={busy}>{busy ? "Please wait…" : tab === "login" ? "Sign In" : "Create Account"}</Btn>
 
-        <button onClick={fillDemo} style={{
-          width: "100%", marginTop: 12, background: "transparent", border: "none",
-          color: C.muted, fontSize: 11, cursor: "pointer", textDecoration: "underline",
-        }}>
-          Use demo credentials
-        </button>
+            {tab === "login" && (
+              <button onClick={goToForgot} style={{
+                width: "100%", marginTop: 12, background: "transparent", border: "none",
+                color: C.muted, fontSize: 11, cursor: "pointer", textDecoration: "underline",
+              }}>
+                Reset your password
+              </button>
+            )}
+          </>
+        )}
+
+        {tab === "forgot" && (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Reset your password</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 16 }}>
+              Enter your account email — we'll send a 6-digit code to reset your password.
+            </div>
+            <FG label="Email"><Inp type="email" placeholder="you@example.com" value={resetEmail} onChange={e => setResetEmail(e.target.value)} /></FG>
+            <ErrBox msg={err} />
+            <Btn col={C.gold} full onClick={submitForgot} disabled={busy || !resetEmail}>{busy ? "Sending…" : "Send Reset Code"}</Btn>
+            <button onClick={() => { setTab("login"); setErr(""); setOk(""); }} style={{
+              width: "100%", marginTop: 12, background: "transparent", border: "none",
+              color: C.muted, fontSize: 11, cursor: "pointer", textDecoration: "underline",
+            }}>
+              ← Back to sign in
+            </button>
+          </>
+        )}
+
+        {tab === "reset" && (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Enter your code</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 16 }}>
+              Sent to <strong style={{ color: C.text }}>{resetEmail}</strong> — expires in 10 minutes.
+            </div>
+            <OkBox msg={ok} />
+            <FG label="6-digit code">
+              <Inp
+                value={otp}
+                onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="000000"
+                style={{ fontSize: 20, letterSpacing: 8, textAlign: "center", fontFamily: "monospace" }}
+              />
+            </FG>
+            <FG label="New Password">
+              <PasswordField value={newPassword} onChange={e => setNewPassword(e.target.value)} showStrength autoComplete="new-password" />
+            </FG>
+            <FG label="Repeat New Password">
+              <PasswordField value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)} autoComplete="new-password" />
+              {confirmNewPassword && confirmNewPassword !== newPassword && (
+                <div style={{ fontSize: 10, color: C.red, marginTop: 4 }}>Passwords don't match</div>
+              )}
+            </FG>
+            <ErrBox msg={err} />
+            <Btn col={C.gold} full onClick={submitReset} disabled={busy || otp.length !== 6 || !newPassword}>
+              {busy ? "Resetting…" : "Reset Password & Sign In"}
+            </Btn>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12 }}>
+              <button onClick={submitForgot} disabled={busy} style={{
+                background: "transparent", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", textDecoration: "underline",
+              }}>
+                Resend code
+              </button>
+              <button onClick={() => { setTab("login"); setErr(""); setOk(""); }} style={{
+                background: "transparent", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", textDecoration: "underline",
+              }}>
+                ← Back to sign in
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
