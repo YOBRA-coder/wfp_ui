@@ -238,7 +238,7 @@ export default function CandleChart1({
     } catch { setDrawings([]); }
     setTool("none");
     setActivePreview(null);
-    
+    redrawRects
     if (api && pair && timeframe) {
       api.get(`/prefs/drawings?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}`)
         .then((res) => {
@@ -537,7 +537,7 @@ export default function CandleChart1({
       };
     }
 
-    const resize = () => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth }); redrawRects(); };
+    const resize = () => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth }); redrawAllTools(); };
     window.addEventListener("resize", resize);
     // Keep drawn rectangles pinned to their time/price as the user pans or zooms.
     chart.timeScale().subscribeVisibleLogicalRangeChange(redrawAllTools);
