@@ -178,7 +178,7 @@ export default function PricesPage({ api }) {
   // the previous chart just sits there frozen (mislabeled with the new pair)
   // until the REST fetch below resolves, with no indication anything is loading.
   useEffect(() => {
-    setBars([]);
+    //setBars([]);
     setMarkers([]);
     setSr([]);
     setTrendline(null);
@@ -663,20 +663,21 @@ export default function PricesPage({ api }) {
         {/* Chart */}
         <ChartWrap>
           <div style={{ position: "relative" }}>
-            {/* Notice the opacity background change so it doesn't create a pitch-black flicker */}
-            {(!bars.length) && (
+            {/* Use the busy flag from your REST client to show loading state instead of checking !bars.length */}
+            {busy && (
               <div style={{
-                position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column",
+                position: "absolute", inset: 0, zIndex: 10, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 10,
-                background: "rgba(11, 23, 35, 0.6)", borderRadius: 18, // Match your card background color instead of absolute black (#071018)
-                backdropFilter: "blur(2px)" // Soft blur looks cleaner than a disappearing component
+                background: "rgba(11, 23, 35, 0.4)", // Translucent tinted shade matching card background
+                backdropFilter: "blur(1px)", // Very gentle blur allows price to remain readable underneath
+                borderRadius: 18,
               }}>
                 <div style={{
                   width: 30, height: 30, borderRadius: "50%",
                   border: `3px solid ${C.border}`, borderTopColor: C.gold,
                   animation: "spin 0.8s linear infinite",
                 }} />
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>Loading {selP} · {selTf}…</span>
+                <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>Refreshing {selP} · {selTf}…</span>
               </div>
             )}
             <CandleChart1

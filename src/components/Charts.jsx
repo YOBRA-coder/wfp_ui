@@ -519,7 +519,7 @@ export default function CandleChart1({
   // candle arrives. ──
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
-    if (!candleSeries || !bars.length) return;
+    if (!candleSeries || !bars || bars.length === 0) return;
 
     const candleData = bars.map((b) => ({
       time: b.time, open: Number(b.open), high: Number(b.high), low: Number(b.low), close: Number(b.close),
@@ -621,9 +621,10 @@ export default function CandleChart1({
 
   // ── Live tick / candle-close updates — no chart rebuild, just series.update() ──
   useEffect(() => {
-    if (!liveCandle || !candleSeriesRef.current) return;
+    if (!liveCandle || !candleSeriesRef.current || !lastBarTimeRef.current) return;
     const t = typeof liveCandle.time === "number" ? liveCandle.time : toUnixTime(liveCandle.time);
     if (t == null) return;
+    if(t<lastBarTimeRef.current) return;
     try {
       candleSeriesRef.current.update({
         time: t,
