@@ -125,6 +125,11 @@ export default function CopyTrading({ api }) {
 
   const statusColor = { open: C.green, pending: C.gold, pending_bridge: C.gold, sent_to_bridge: C.blue,
                          close_requested: C.gold, close_sent_to_bridge: C.blue, closed: C.muted, failed: C.red };
+  // Closed/failed trades now live in the Journal (see /journal — it pulls
+  // them in automatically) so this page only needs to show what's actually
+  // still open or in flight, not the full lifetime history piling up here.
+  const OPEN_STATUSES = new Set(["open", "pending", "pending_bridge", "sent_to_bridge", "close_requested", "close_sent_to_bridge"]);
+  const openTrades = trades.filter(t => t.status !== "pending_approval" && OPEN_STATUSES.has(t.status));
   const mobile = useMobile();
 
   return (
@@ -188,17 +193,20 @@ export default function CopyTrading({ api }) {
       {/* Trade history table */}
       <Card>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <SectionTitle>Copy Trade History ({trades.filter(t => t.status !== "pending_approval").length})</SectionTitle>
+          <SectionTitle>Open Copy Trades ({openTrades.length})</SectionTitle>
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: C.muted, marginBottom: 10 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: liveStatus === "open" ? C.green : C.muted, boxShadow: liveStatus === "open" ? `0 0 6px ${C.green}` : "none" }} />
             {liveStatus === "open" ? "Live" : "Reconnecting…"}
           </div>
         </div>
-        {trades.filter(t => t.status !== "pending_approval").length === 0
-          ? <div style={{ color: C.muted, fontSize: 12, padding: "12px 0" }}>No copy trades yet — subscribe to a provider in the Providers tab, or copy a signal directly</div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 10, marginTop: -6 }}>
+          Closed and failed trades move to <span onClick={() => navigate("/journal")} style={{ color: C.gold, cursor: "pointer", fontWeight: 600 }}>Journal</span> once they finish.
+        </div>
+        {openTrades.length === 0
+          ? <div style={{ color: C.muted, fontSize: 12, padding: "12px 0" }}>No open copy trades — subscribe to a provider in the Providers tab, or copy a signal directly</div>
           : mobile ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {trades.filter(t => t.status !== "pending_approval").map(t => (
+              {openTrades.map((t) => (
                 <div key={t.id} onClick={() => viewChart(t)} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, cursor: "pointer" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -241,7 +249,7 @@ export default function CopyTrading({ api }) {
               <div style={{ display: "grid", gridTemplateColumns: "70px 50px 100px 85px 85px 75px 75px 75px 75px 70px 60px 80px", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.border}`, fontSize: 9, color: C.muted, letterSpacing: 1, fontWeight: 700 }}>
                 {["PAIR","DIR","PROVIDER","ENTRY","SL","TP","LOT SIZE","P&L $","PIPS","STATUS","MODE",""].map(h => <span key={h}>{h}</span>)}
               </div>
-              {trades.filter(t => t.status !== "pending_approval").map(t => (
+              {openTrades.map(t => (
                 <div key={t.id} onClick={() => viewChart(t)} style={{ display: "grid", gridTemplateColumns: "70px 50px 100px 85px 85px 75px 75px 75px 75px 70px 60px 80px", gap: 8, padding: "9px 0", borderBottom: `1px solid ${C.border}20`, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
                   <strong>{t.pair}</strong>
                   <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>

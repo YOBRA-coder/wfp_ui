@@ -3,7 +3,7 @@ import { C } from "../utils/constants.jsx";
 import { fp, f1 } from "../utils/utils.js";
 import { Badge } from "../shared/Shared.jsx";
 import { ago } from "../utils/utils.js";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   createChart,
@@ -127,6 +127,43 @@ function toUnixTime(s) {
   return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
 }
 
+// ── EAT (Africa/Nairobi, UTC+3, no DST) time formatting — used throughout the
+// chart so every timestamp the trader sees matches their local time. ──
+function eatTickLabel(unixSeconds) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date(unixSeconds * 1000));
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("day")} ${get("month")} ${get("hour")}:${get("minute")}`;
+}
+function eatTooltipLabel(unixSeconds) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date(unixSeconds * 1000));
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("year")}.${get("month")}.${get("day")} ${get("hour")}:${get("minute")} EAT`;
+}
+function eatNowLabel() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("hour")}:${get("minute")}`;
+}
+
+// Major FX session windows in UTC (standard approximation).
+const SESSIONS = [
+  { name: "Sydney",   startUTC: 22, endUTC: 7,  color: "#a855f7" },
+  { name: "Tokyo",    startUTC: 0,  endUTC: 9,  color: "#3b82f6" },
+  { name: "London",   startUTC: 8,  endUTC: 17, color: "#22c55e" },
+  { name: "New York", startUTC: 13, endUTC: 22, color: "#f59e0b" },
+];
+function activeSessions(utcHour) {
+  return SESSIONS.filter((s) => (s.startUTC < s.endUTC
+    ? utcHour >= s.startUTC && utcHour < s.endUTC
+    : utcHour >= s.startUTC || utcHour < s.endUTC));
+}
+
 export default function CandleChart1({
   bars = [],
   entry, sl, tp,
@@ -145,24 +182,171 @@ export default function CandleChart1({
   onAdjustSlTp = null,  // (type: 'sl'|'tp', price: number) => void — called once, on release
   trades = [], // Active trade per pair
   selectedTradeId = null, // ID of the currently selected trade
-  onTradeSelect=null
+  onTradeSelect = null,
+  enableDrawing = true,  // shows the rectangle-drawing toolbar and overlay
+  drawingKey = null,     // storage key for saved drawings; defaults to `${pair}_${timeframe}`
+  api = null,            // pass the useApi() client to sync drawings to the user's account (falls back to this-device-only localStorage without it)
 }) {
   const ref = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
-  const lastBarTimeRef = useRef(null);
-  const decimals = pairDecimals(pair);
-  const visibleRangeRef = useRef(null);   // preserved pan/zoom across data-only rebuilds
-  const lastResetKeyRef = useRef(null);   // only refit the view on a genuine pair/timeframe change
-  const [hover, setHover] = useState(null); // live OHLC+volume under the crosshair, for the on-chart header
+  const ema20Ref = useRef(null);
+  const ema50Ref = useRef(null);
+  const bbUpRef = useRef(null);
+  const bbLowRef = useRef(null);
+  const volRef = useRef(null);
+  const trendRef = useRef(null);
+  const priceLinesRef = useRef([]); // trade entry + S/R lines — rebuilt (cheaply) on every data update
   const slLineRef = useRef(null);
   const tpLineRef = useRef(null);
   const dragStateRef = useRef(null); // 'sl' | 'tp' | null — which line (if any) is currently being dragged
+  const lastBarTimeRef = useRef(null);
+  const visibleRangeRef = useRef(null); // null until this chart instance has done its one initial fitContent()
+  const decimals = pairDecimals(pair);
+  const [hover, setHover] = useState(null); // live OHLC+volume under the crosshair, for the on-chart header
+  const [clock, setClock] = useState(0); // ticks the session/EAT badge every 30s — doesn't touch the chart
 
-  // ── Full (re)build: runs on mount and whenever the pair/timeframe/bar-set changes ──
+  // ── Rectangle drawing tool ──────────────────────────────────────────────
+  // Rectangles are stored as {id, t1, p1, t2, p2} in time/price space (not
+  // pixels), so they stay anchored to the correct candles/prices across pan,
+  // zoom, resize, and reload. Persisted to localStorage per pair+timeframe.
+  const canvasRef = useRef(null);
+  const rectStartRef = useRef(null);
+  const storageKey = `yobbyfx_drawings_${drawingKey || resetKey || pair}`;
+  const [tool, setTool] = useState("none"); // "none" | "rect"
+  const [rects, setRects] = useState([]);
+  const [drawingRect, setDrawingRect] = useState(null); // in-progress rectangle
+  const rectsRef = useRef(rects); rectsRef.current = rects;
+  const drawingRectRef = useRef(drawingRect); drawingRectRef.current = drawingRect;
+
+  const hydratedRef = useRef(false); // true once we know we have the real (server-confirmed) rect set — guards against echoing a stale local cache back over the server's copy
+
+  // Load saved rectangles whenever the chart/pair/timeframe changes. When an
+  // `api` client is passed, the account's saved drawings (from the backend)
+  // are the source of truth — localStorage is only the offline/instant-paint
+  // fallback, and gets overwritten by whatever the server returns.
+  useEffect(() => {
+    if (!enableDrawing) { setRects([]); return; }
+    let cancelled = false;
+    hydratedRef.current = !api; // no api → local cache IS the source of truth, safe to save immediately
+    // Instant local paint first so pan/zoom isn't blocked on the network.
+    try {
+      const raw = localStorage.getItem(storageKey);
+      setRects(raw ? JSON.parse(raw) : []);
+    } catch { setRects([]); }
+    setTool("none");
+    setDrawingRect(null);
+    if (api && pair && timeframe) {
+      api.get(`/prefs/drawings?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}`)
+        .then((res) => {
+          if (cancelled) return;
+          if (Array.isArray(res?.rects)) setRects(res.rects);
+          hydratedRef.current = true; // now safe to push local edits back to the server
+        })
+        .catch(() => { hydratedRef.current = true; /* offline/not-logged-in — local cache from above stands, and IS the source of truth now */ });
+    }
+    return () => { cancelled = true; };
+  }, [storageKey, enableDrawing, api, pair, timeframe]);
+
+  // Persist on every change — localStorage always (instant, offline-safe),
+  // backend too once hydrated (skipped during the load race above, so a
+  // stale local cache can't stomp a newer server copy before it arrives).
+  useEffect(() => {
+    if (!enableDrawing) return;
+    try { localStorage.setItem(storageKey, JSON.stringify(rects)); } catch { /* storage full/unavailable — drawings just won't persist */ }
+    if (api && pair && timeframe && hydratedRef.current) {
+      api.put("/prefs/drawings", { pair, timeframe, rects }).catch(() => { /* will retry next change; local copy is already safe */ });
+    }
+  }, [rects, storageKey, enableDrawing, api, pair, timeframe]);
+
+  const redrawRects = useCallback(() => {
+    const canvas = canvasRef.current, chart = chartRef.current, series = candleSeriesRef.current, host = ref.current;
+    if (!canvas || !chart || !series || !host || !enableDrawing) return;
+    const w = host.clientWidth, h = height;
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, w, h);
+    const ts = chart.timeScale();
+    const draw = (r, preview) => {
+      const t1 = typeof r.t1 === "number" ? r.t1 : toUnixTime(r.t1);
+      const t2 = typeof r.t2 === "number" ? r.t2 : toUnixTime(r.t2);
+      const x1 = ts.timeToCoordinate(t1), x2 = ts.timeToCoordinate(t2);
+      const y1 = series.priceToCoordinate(r.p1), y2 = series.priceToCoordinate(r.p2);
+      if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+      const rx = Math.min(x1, x2), ry = Math.min(y1, y2), rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
+      ctx.fillStyle = preview ? "rgba(250,204,21,0.14)" : "rgba(59,130,246,0.16)";
+      ctx.strokeStyle = preview ? "#facc15" : "#3b82f6";
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash(preview ? [4, 3] : []);
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.strokeRect(rx, ry, rw, rh);
+    };
+    rectsRef.current.forEach((r) => draw(r, false));
+    if (drawingRectRef.current) draw(drawingRectRef.current, true);
+  }, [enableDrawing, height]);
+
+  // Redraw whenever the rectangle set (saved or in-progress) changes.
+  useEffect(() => { redrawRects(); }, [rects, drawingRect, redrawRects]);
+
+  function canvasPointToTimePrice(e) {
+    const canvas = canvasRef.current, chart = chartRef.current, series = candleSeriesRef.current;
+    if (!canvas || !chart || !series) return null;
+    const box = canvas.getBoundingClientRect();
+    const cx = (e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX) - box.left;
+    const cy = (e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY) - box.top;
+    const t = chart.timeScale().coordinateToTime(cx);
+    const p = series.coordinateToPrice(cy);
+    if (t == null || p == null) return null;
+    return { t, p };
+  }
+  const handleDrawStart = (e) => {
+    if (tool !== "rect") return;
+    const pt = canvasPointToTimePrice(e);
+    if (!pt) return;
+    e.preventDefault();
+    rectStartRef.current = pt;
+    setDrawingRect({ t1: pt.t, p1: pt.p, t2: pt.t, p2: pt.p });
+  };
+  const handleDrawMove = (e) => {
+    if (tool !== "rect" || !rectStartRef.current) return;
+    const pt = canvasPointToTimePrice(e);
+    if (!pt) return;
+    e.preventDefault();
+    setDrawingRect({ t1: rectStartRef.current.t, p1: rectStartRef.current.p, t2: pt.t, p2: pt.p });
+  };
+  const handleDrawEnd = (e) => {
+    if (tool !== "rect" || !rectStartRef.current) return;
+    const pt = canvasPointToTimePrice(e);
+    const start = rectStartRef.current;
+    rectStartRef.current = null;
+    if (pt && start && (pt.t !== start.t || pt.p !== start.p)) {
+      setRects((prev) => [...prev, { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, t1: start.t, p1: start.p, t2: pt.t, p2: pt.p }]);
+    }
+    setDrawingRect(null);
+    setTool("none"); // one rectangle per click of the tool button, then back to normal pan/zoom
+  };
+
+  // Latest props, readable from handlers registered once in the build effect below
+  // (so trade-selection clicks and the crosshair always see current data without
+  // needing to rebuild the chart every time bars/trades change).
+  const barsRef = useRef(bars); barsRef.current = bars;
+  const tradesRef = useRef(trades); tradesRef.current = trades;
+  const onTradeSelectRef = useRef(onTradeSelect); onTradeSelectRef.current = onTradeSelect;
+
+  useEffect(() => {
+    const iv = setInterval(() => setClock((c) => c + 1), 30000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ── Build: create the chart + series objects. Runs on mount and whenever the
+  // pair/timeframe (resetKey) or an indicator toggle changes — deliberately NOT
+  // on every new bar/trade update, so a new candle closing or a trade opening
+  // never tears the chart down. That teardown-on-every-update was the root of
+  // the "not steady, loses pan/zoom" complaint. ──
   useEffect(() => {
     if (!ref.current) return;
-    if (!bars.length) return;
+    visibleRangeRef.current = null;
 
     const chart = createChart(ref.current, {
       width: ref.current.clientWidth,
@@ -173,27 +357,12 @@ export default function CandleChart1({
       rightPriceScale: { borderColor: "#1e293b" },
       timeScale: {
         borderColor: "#1e293b", timeVisible: true, secondsVisible: false,
-        // MT5-style axis labels: "08 Jul 14:00" for intraday, date-only when zoomed out to daily bars.
-        tickMarkFormatter: (time) => {
-          const d = new Date(time * 1000);
-          const dd = String(d.getUTCDate()).padStart(2, "0");
-          const mon = d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
-          const hh = String(d.getUTCHours()).padStart(2, "0");
-          const mm = String(d.getUTCMinutes()).padStart(2, "0");
-          return `${dd} ${mon} ${hh}:${mm}`;
-        },
+        // MT5-style axis labels, in East Africa Time: "08 Jul 14:00"
+        tickMarkFormatter: (time) => eatTickLabel(time),
       },
       localization: {
-        // Crosshair/tooltip date — MT5 shows "YYYY.MM.DD HH:mm"
-        timeFormatter: (time) => {
-          const d = new Date(time * 1000);
-          const yyyy = d.getUTCFullYear();
-          const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-          const dd = String(d.getUTCDate()).padStart(2, "0");
-          const hh = String(d.getUTCHours()).padStart(2, "0");
-          const mi = String(d.getUTCMinutes()).padStart(2, "0");
-          return `${yyyy}.${mm}.${dd} ${hh}:${mi} UTC`;
-        },
+        // Crosshair/tooltip date — "YYYY.MM.DD HH:mm EAT"
+        timeFormatter: (time) => eatTooltipLabel(time),
         priceFormatter: (p) => Number(p).toFixed(decimals),
       },
     });
@@ -210,182 +379,54 @@ export default function CandleChart1({
     });
     candleSeriesRef.current = candleSeries;
 
-    const candleData = bars.map((b) => ({
-      time: b.time, open: Number(b.open), high: Number(b.high), low: Number(b.low), close: Number(b.close),
-    }));
-    candleSeries.setData(candleData);
-    lastBarTimeRef.current = candleData.length ? candleData[candleData.length - 1].time : null;
-
-    // EMA20 / EMA50
-    if (indicators.ema && bars.some((b) => b.ema20 != null)) {
-      const s = chart.addSeries(LineSeries, { color: "#facc15", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA20" });
-      s.setData(bars.filter((b) => b.ema20 != null).map((b) => ({ time: b.time, value: Number(b.ema20) })));
+    if (indicators.ema) {
+      ema20Ref.current = chart.addSeries(LineSeries, { color: "#facc15", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA20" });
+      ema50Ref.current = chart.addSeries(LineSeries, { color: "#a855f7", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA50" });
     }
-    if (indicators.ema && bars.some((b) => b.ema50 != null)) {
-      const s = chart.addSeries(LineSeries, { color: "#a855f7", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA50" });
-      s.setData(bars.filter((b) => b.ema50 != null).map((b) => ({ time: b.time, value: Number(b.ema50) })));
+    if (indicators.bb) {
+      bbUpRef.current  = chart.addSeries(LineSeries, { color: "#60a5fa", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
+      bbLowRef.current = chart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
     }
-    // Bollinger bands
-    if (indicators.bb && bars.some((b) => b.bb_upper ?? b.bb_up)) {
-      const s = chart.addSeries(LineSeries, { color: "#60a5fa", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
-      s.setData(bars.filter((b) => (b.bb_upper ?? b.bb_up) != null).map((b) => ({ time: b.time, value: Number(b.bb_upper ?? b.bb_up) })));
+    if (indicators.volume) {
+      const v = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol", color: "#3d9eff55" });
+      v.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+      volRef.current = v;
     }
-    if (indicators.bb && bars.some((b) => b.bb_lower ?? b.bb_low)) {
-      const s = chart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
-      s.setData(bars.filter((b) => (b.bb_lower ?? b.bb_low) != null).map((b) => ({ time: b.time, value: Number(b.bb_lower ?? b.bb_low) })));
-    }
-    // Volume histogram — pinned to the bottom ~15% of the pane via its own price scale
-    if (indicators.volume && bars.some((b) => b.volume != null)) {
-      const volSeries = chart.addSeries(HistogramSeries, {
-        priceFormat: { type: "volume" }, priceScaleId: "vol",
-        color: "#3d9eff55",
+    if (indicators.trendline) {
+      trendRef.current = chart.addSeries(LineSeries, {
+        color: "#22c55e", lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
-      volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-      volSeries.setData(bars.map((b) => ({
-        time: b.time, value: Number(b.volume) || 0,
-        color: Number(b.close) >= Number(b.open) ? "#22c55e55" : "#ef444455",
-      })));
     }
 
-    // ── Entry / Stop Loss / Take Profit — native price lines with labels ──
-    const priceLines = [];
-   /* if (entry) priceLines.push(candleSeries.createPriceLine({ price: Number(entry), color: "#f0b429", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" }));
-    if (sl) {
-      const slLine = candleSeries.createPriceLine({ price: Number(sl), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
-      priceLines.push(slLine);
-      slLineRef.current = slLine;
-    }
-    if (tp) {
-      const tpLine = candleSeries.createPriceLine({ price: Number(tp), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
-      priceLines.push(tpLine);
-      tpLineRef.current = tpLine;
-    }
-*/
-        // ── Active trades — native price lines with labels ──
-    trades.forEach((t) => {
-
-    const color =
-        t.direction === "BUY"
-            ? "#22c55e"
-            : "#ef4444";
-
-    // ENTRY ALWAYS
-    priceLines.push(
-        candleSeries.createPriceLine({
-            price: Number(t.entry_price),
-            color: t.id === selectedTradeId ? "#f59e0b" : color,
-            lineWidth: t.id === selectedTradeId ? 4 : 2,
-            lineStyle: t.id === selectedTradeId ? 0 : 3,
-            axisLabelVisible: true,
-            title: `${t.direction} ${t.pair} (${t.pnl_usd >= 0 ? "+" : ""}${fp(t.pnl_usd, 2)} USD, ${t.pnl_pips}p) (${t.lot_size})`,
-        })
-    );
-
-    // only selected trade shows SL & TP
-    if (t.id !== selectedTradeId) return;
-
-    const slLine = candleSeries.createPriceLine({
-        price: Number(t.stop_loss),
-        color: "#ef4444",
-        lineWidth: 2,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: draggableSlTp ? "SL ⇕" : "SL",
+    // ── Click on an active trade's entry line to select it — pixel-distance hit
+    // test (not a raw price tolerance), so this works the same on a 5-decimal
+    // EURUSD line as on a 2-decimal XAUUSD/JPY line, where a fixed price
+    // tolerance is either unclickable or too wide. ──
+    chart.subscribeClick((param) => {
+      if (!param.point) return;
+      const HIT_PX = 10;
+      let closest = null, closestDist = Infinity;
+      (tradesRef.current || []).forEach((t) => {
+        const y = candleSeries.priceToCoordinate(Number(t.entry_price));
+        if (y == null) return;
+        const dist = Math.abs(y - param.point.y);
+        if (dist <= HIT_PX && dist < closestDist) { closest = t; closestDist = dist; }
+      });
+      if (closest) onTradeSelectRef.current?.(closest);
     });
 
-    const tpLine = candleSeries.createPriceLine({
-        price: Number(t.take_profit),
-        color: "#22c55e",
-        lineWidth: 2,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: draggableSlTp ? "TP ⇕" : "TP",
-    });
-
-    priceLines.push(slLine);
-    priceLines.push(tpLine);
-
-    slLineRef.current = slLine;
-    tpLineRef.current = tpLine;
-
-});
-
-chart.subscribeClick((param)=>{
-
-    if(!param.point) return;
-
-    const clickedPrice =
-        candleSeries.coordinateToPrice(param.point.y);
-
-    if(clickedPrice==null) return;
-
-    const tolerance=0.0005;
-
-    const trade=trades.find(t=>
-        Math.abs(clickedPrice-Number(t.entry_price)) < tolerance
-    );
-
-    if(trade){
-      onTradeSelect?.(trade);
-    }
-
-});
-
-
-    // ── Support / Resistance — dashed horizontal levels ──
-    if (indicators.sr) (supportResistance || []).forEach((lvl) => {
-      const isRes = lvl.type === "resistance";
-      priceLines.push(candleSeries.createPriceLine({
-        price: Number(lvl.price),
-        color: isRes ? "#fb7185" : "#34d399",
-        lineWidth: 1, lineStyle: 3, axisLabelVisible: true,
-        title: isRes ? "Resistance" : "Support",
-      }));
-    });
-
-    // ── Trendline — a 2-point line series through recent swing highs/lows ──
-    let trendSeries = null;
-    if (indicators.trendline && trendline?.p1 && trendline?.p2) {
-      const t1 = toUnixTime(trendline.p1.time), t2 = toUnixTime(trendline.p2.time);
-      if (t1 != null && t2 != null) {
-        trendSeries = chart.addSeries(LineSeries, {
-          color: trendline.direction === "up" ? "#22c55e" : "#ef4444",
-          lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: false,
-          crosshairMarkerVisible: false,
-        });
-        trendSeries.setData([
-          { time: t1, value: Number(trendline.p1.value) },
-          { time: t2, value: Number(trendline.p2.value) },
-        ]);
-      }
-    }
-
-    // ── Candle-pattern / signal markers (arrows + labels) ──
-    if (markers?.length) {
-      const formatted = markers
-        .map((m) => ({ ...m, time: toUnixTime(m.time) }))
-        .filter((m) => m.time != null)
-        .sort((a, b) => a.time - b.time);
-      try {
-        candleSeries.setMarkers(formatted);
-      } catch {
-        /* older/newer lightweight-charts marker API mismatch — ignore gracefully */
-      }
-    }
-
-    // ── On-chart header data: track OHLC + volume under the crosshair (or the
-    // latest bar when not hovering) so the overlay never needs a separate row
-    // of text above the chart — this is the fix for "names" eating vertical
-    // space on small Android screens.
-    const lastBar = bars[bars.length - 1];
-    setHover({ o: lastBar.open, h: lastBar.high, l: lastBar.low, c: lastBar.close, v: lastBar.volume ?? null, time: lastBar.time });
+    // ── On-chart header data: OHLC + volume under the crosshair (or the latest
+    // bar when not hovering). ──
     chart.subscribeCrosshairMove((param) => {
+      const b = barsRef.current;
+      const last = b[b.length - 1];
+      if (!last) return;
       if (!param || !param.time || !param.seriesData) {
-        setHover({ o: lastBar.open, h: lastBar.high, l: lastBar.low, c: lastBar.close, v: lastBar.volume ?? null, time: lastBar.time });
+        setHover({ o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume ?? null, time: last.time });
         return;
       }
       const d = param.seriesData.get(candleSeries);
-      if (d) setHover({ o: d.open, h: d.high, l: d.low, c: d.close, v: bars.find(b => b.time === param.time)?.volume ?? null, time: param.time });
+      if (d) setHover({ o: d.open, h: d.high, l: d.low, c: d.close, v: b.find((x) => x.time === param.time)?.volume ?? null, time: param.time });
     });
 
     // ── Drag-to-adjust SL/TP directly on the chart (MT5-style) ──
@@ -431,7 +472,8 @@ chart.subscribeClick((param)=>{
         const finalPrice = lineRef.current?.options().price;
         const type = dragStateRef.current;
         dragStateRef.current = null;
-        if (finalPrice != null) onAdjustSlTp({type, finalPrice});
+        // Called with (type, price) — matches PricesPage's adjustCopyTradeFromChart(type, price).
+        if (finalPrice != null) onAdjustSlTp(type, finalPrice);
       };
       const el = ref.current;
       el.addEventListener("mousedown", onDown);
@@ -450,34 +492,131 @@ chart.subscribeClick((param)=>{
       };
     }
 
-    // A new candle closing shouldn't yank the chart back to "fit everything" if the
-    // user has panned/zoomed to look at something specific — only refit on an actual
-    // pair/timeframe/indicator change (a fresh resetKey), otherwise restore exactly
-    // where they were looking.
-    const isFreshView = lastResetKeyRef.current !== resetKey;
-    lastResetKeyRef.current = resetKey;
-    if (isFreshView || !visibleRangeRef.current) {
-      chart.timeScale().fitContent();
-    } else {
-      try { chart.timeScale().setVisibleLogicalRange(visibleRangeRef.current); }
-      catch { chart.timeScale().fitContent(); }
-    }
-
-    const resize = () => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth }); };
+    const resize = () => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth }); redrawRects(); };
     window.addEventListener("resize", resize);
+    // Keep drawn rectangles pinned to their time/price as the user pans or zooms.
+    chart.timeScale().subscribeVisibleLogicalRangeChange(redrawRects);
 
     return () => {
       window.removeEventListener("resize", resize);
       if (dragCleanup) dragCleanup();
-      try { visibleRangeRef.current = chart.timeScale().getVisibleLogicalRange(); } catch { /* noop */ }
-      priceLines.forEach((pl) => { try { candleSeries.removePriceLine(pl); } catch { /* noop */ } });
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
+      ema20Ref.current = null; ema50Ref.current = null;
+      bbUpRef.current = null; bbLowRef.current = null;
+      volRef.current = null; trendRef.current = null;
+      priceLinesRef.current = [];
       slLineRef.current = null;
       tpLineRef.current = null;
     };
-  }, [resetKey, bars, indicators.ema, indicators.bb, indicators.sr, indicators.trendline, indicators.volume]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resetKey, indicators.ema, indicators.bb, indicators.volume, indicators.trendline, draggableSlTp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Data update: candles, indicator lines, volume, markers, trendline. Runs
+  // whenever the bar set (or overlays) changes but never rebuilds the chart —
+  // this is what keeps pan/zoom exactly where the user left it when a new
+  // candle arrives. ──
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries || !bars.length) return;
+
+    const candleData = bars.map((b) => ({
+      time: b.time, open: Number(b.open), high: Number(b.high), low: Number(b.low), close: Number(b.close),
+    }));
+    candleSeries.setData(candleData);
+    lastBarTimeRef.current = candleData[candleData.length - 1].time;
+
+    if (ema20Ref.current) ema20Ref.current.setData(bars.filter((b) => b.ema20 != null).map((b) => ({ time: b.time, value: Number(b.ema20) })));
+    if (ema50Ref.current) ema50Ref.current.setData(bars.filter((b) => b.ema50 != null).map((b) => ({ time: b.time, value: Number(b.ema50) })));
+    if (bbUpRef.current)  bbUpRef.current.setData(bars.filter((b) => (b.bb_upper ?? b.bb_up) != null).map((b) => ({ time: b.time, value: Number(b.bb_upper ?? b.bb_up) })));
+    if (bbLowRef.current) bbLowRef.current.setData(bars.filter((b) => (b.bb_lower ?? b.bb_low) != null).map((b) => ({ time: b.time, value: Number(b.bb_lower ?? b.bb_low) })));
+    if (volRef.current) {
+      volRef.current.setData(bars.map((b) => ({
+        time: b.time, value: Number(b.volume) || 0,
+        color: Number(b.close) >= Number(b.open) ? "#22c55e55" : "#ef444455",
+      })));
+    }
+    if (trendRef.current) {
+      const t1 = toUnixTime(trendline?.p1?.time), t2 = toUnixTime(trendline?.p2?.time);
+      if (trendline && t1 != null && t2 != null) {
+        trendRef.current.applyOptions({ color: trendline.direction === "up" ? "#22c55e" : "#ef4444" });
+        trendRef.current.setData([{ time: t1, value: Number(trendline.p1.value) }, { time: t2, value: Number(trendline.p2.value) }]);
+      } else {
+        trendRef.current.setData([]);
+      }
+    }
+
+    if (markers?.length) {
+      const formatted = markers.map((m) => ({ ...m, time: toUnixTime(m.time) })).filter((m) => m.time != null).sort((a, b) => a.time - b.time);
+      try { candleSeries.setMarkers(formatted); } catch { /* older/newer lightweight-charts marker API mismatch — ignore gracefully */ }
+    } else {
+      try { candleSeries.setMarkers([]); } catch { /* noop */ }
+    }
+
+    // ── Price lines: active trades' entry (+ SL/TP for the selected one),
+    // legacy entry/sl/tp props, and support/resistance. Cheap to fully redo
+    // each update — unlike the series above, price lines have no setData(). ──
+    priceLinesRef.current.forEach((pl) => { try { candleSeries.removePriceLine(pl); } catch { /* noop */ } });
+    priceLinesRef.current = [];
+    slLineRef.current = null;
+    tpLineRef.current = null;
+
+    // Legacy entry/sl/tp props (used by the Signals detail chart, which has no
+    // `trades` array). When `trades` is populated (Live Prices), those price
+    // lines are drawn per-trade below instead, so skip these to avoid duplicates.
+    if (!trades.length) {
+      if (entry) priceLinesRef.current.push(candleSeries.createPriceLine({ price: Number(entry), color: "#f0b429", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" }));
+      if (sl) {
+        const l = candleSeries.createPriceLine({ price: Number(sl), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
+        priceLinesRef.current.push(l); slLineRef.current = l;
+      }
+      if (tp) {
+        const l = candleSeries.createPriceLine({ price: Number(tp), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
+        priceLinesRef.current.push(l); tpLineRef.current = l;
+      }
+    }
+
+    trades.forEach((t) => {
+      const color = t.direction === "BUY" ? "#22c55e" : "#ef4444";
+      priceLinesRef.current.push(candleSeries.createPriceLine({
+        price: Number(t.entry_price),
+        color: t.id === selectedTradeId ? "#f59e0b" : color,
+        lineWidth: t.id === selectedTradeId ? 4 : 2,
+        lineStyle: t.id === selectedTradeId ? 0 : 3,
+        axisLabelVisible: true,
+        title: `${t.direction} ${t.pair} (${t.pnl_usd >= 0 ? "+" : ""}${fp(t.pnl_usd, 2)} USD, ${t.pnl_pips}p) (${t.lot_size})`,
+      }));
+      if (t.id !== selectedTradeId) return;
+      const slLine = candleSeries.createPriceLine({ price: Number(t.stop_loss), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
+      const tpLine = candleSeries.createPriceLine({ price: Number(t.take_profit), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
+      priceLinesRef.current.push(slLine, tpLine);
+      slLineRef.current = slLine;
+      tpLineRef.current = tpLine;
+    });
+
+    if (indicators.sr) (supportResistance || []).forEach((lvl) => {
+      const isRes = lvl.type === "resistance";
+      priceLinesRef.current.push(candleSeries.createPriceLine({
+        price: Number(lvl.price),
+        color: isRes ? "#fb7185" : "#34d399",
+        lineWidth: 1, lineStyle: 3, axisLabelVisible: true,
+        title: isRes ? "Resistance" : "Support",
+      }));
+    });
+
+    const last = bars[bars.length - 1];
+    setHover((h) => h ?? { o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume ?? null, time: last.time });
+
+    // Fit the view exactly once per chart instance (first data this resetKey
+    // sees). Every later update here — new candle, new trade, refreshed S/R —
+    // leaves pan/zoom untouched.
+    const chart = chartRef.current;
+    if (chart && !visibleRangeRef.current) {
+      chart.timeScale().fitContent();
+      try { visibleRangeRef.current = chart.timeScale().getVisibleLogicalRange() || true; } catch { visibleRangeRef.current = true; }
+    }
+    redrawRects();
+  }, [bars, markers, supportResistance, trendline, trades, selectedTradeId, entry, sl, tp, indicators.sr, draggableSlTp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Live tick / candle-close updates — no chart rebuild, just series.update() ──
   useEffect(() => {
@@ -498,12 +637,15 @@ chart.subscribeClick((param)=>{
     }
   }, [liveCandle]);
 
+  const utcHour = new Date().getUTCHours();
+  const openSessions = activeSessions(utcHour);
+
   return (
     <div style={{ position: "relative", width: "100%" }}>
       <div style={{
         position: "absolute", top: 8, left: 10, right: 10, zIndex: 3,
-        display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8,
-        pointerEvents: "none", // let clicks through to the chart except on the badge itself
+        display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8,
+        pointerEvents: "none", // let clicks through to the chart except on the badges themselves
       }}>
         <div style={{
           display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
@@ -533,6 +675,22 @@ chart.subscribeClick((param)=>{
             </span>
           )}
         </div>
+        {/* EAT clock + active FX sessions — placed alongside the pair/timeframe badge so
+            it's visible without competing for chart height. */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap",
+          background: "rgba(7,16,24,0.82)", border: "1px solid #1e293b", borderRadius: 8,
+          padding: "4px 8px", pointerEvents: "auto", fontSize: 10, color: "#94a3b8",
+        }}>
+          <span style={{ fontWeight: 700, color: "#cbd5e1", fontFamily: "monospace" }}>{eatNowLabel()} EAT</span>
+          <span style={{ opacity: 0.35 }}>·</span>
+          {openSessions.length ? openSessions.map((s) => (
+            <span key={s.name} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, boxShadow: `0 0 4px ${s.color}` }} />
+              {s.name}
+            </span>
+          )) : <span style={{ opacity: 0.6 }}>All sessions closed</span>}
+        </div>
       </div>
       {live && (
         <div style={{
@@ -544,6 +702,49 @@ chart.subscribeClick((param)=>{
         </div>
       )}
       <div ref={ref} style={{ width: "100%", height: `${height}px`, borderRadius: 18, overflow: "hidden", background: "#071018", touchAction: draggableSlTp ? "pan-x" : "auto" }} />
+      {enableDrawing && (
+        <canvas
+          ref={canvasRef}
+          onMouseDown={handleDrawStart} onMouseMove={handleDrawMove} onMouseUp={handleDrawEnd} onMouseLeave={handleDrawEnd}
+          onTouchStart={handleDrawStart} onTouchMove={handleDrawMove} onTouchEnd={handleDrawEnd}
+          style={{
+            position: "absolute", left: 0, top: 0, width: "100%", height: `${height}px`, borderRadius: 18,
+            zIndex: 1, cursor: tool === "rect" ? "crosshair" : "default",
+            pointerEvents: tool === "rect" ? "auto" : "none", touchAction: tool === "rect" ? "none" : "auto",
+          }}
+        />
+      )}
+      {enableDrawing && (
+        <div style={{
+          position: "absolute", bottom: 10, left: 10, zIndex: 3, display: "flex", alignItems: "center", gap: 4,
+          background: "rgba(7,16,24,0.85)", border: "1px solid #1e293b", borderRadius: 8, padding: 4,
+        }}>
+          <button
+            onClick={() => setTool((t) => (t === "rect" ? "none" : "rect"))}
+            title="Draw rectangle"
+            style={{
+              width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
+              background: tool === "rect" ? `${C.gold}2a` : "transparent",
+              border: `1px solid ${tool === "rect" ? C.gold : "#1e293b"}`,
+              borderRadius: 5, cursor: "pointer", color: tool === "rect" ? C.gold : "#94a3b8", fontSize: 13,
+            }}
+          >▭</button>
+          {rects.length > 0 && (
+            <>
+              <button
+                onClick={() => setRects((prev) => prev.slice(0, -1))}
+                title="Undo last rectangle"
+                style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid #1e293b", borderRadius: 5, cursor: "pointer", color: "#94a3b8", fontSize: 13 }}
+              >↺</button>
+              <button
+                onClick={() => setRects([])}
+                title="Clear all drawings"
+                style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid #1e293b", borderRadius: 5, cursor: "pointer", color: "#94a3b8", fontSize: 13 }}
+              >✕</button>
+            </>
+          )}
+        </div>
+      )}
       <style>{`@keyframes pulseLive{0%,100%{opacity:1}50%{opacity:.35}}`}</style>
     </div>
   );
@@ -595,11 +796,20 @@ function SigCard({ s, selected, onClick }) {
   );
 }
 
-const PAIRS = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD","EURGBP","EURJPY","GBPJPY","XAUUSD","BTCUSD"];
+// Kept in sync with the backend's PAIR_CONFIG (signals.py) / GET /prices/pairs —
+// every pair the platform can actually price, chart, and generate signals for.
+const PAIRS = [
+  "EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD",
+  "EURGBP","EURJPY","EURAUD","EURCAD","EURCHF","EURNZD",
+  "GBPJPY","GBPAUD","GBPCAD","GBPCHF","GBPNZD",
+  "AUDCAD","AUDCHF","AUDJPY","AUDNZD","CADCHF","CADJPY","CHFJPY","NZDCAD","NZDCHF","NZDJPY",
+  "USDSGD","USDZAR","USDMXN","USDTRY",
+  "XAUUSD","XAGUSD","BTCUSD","ETHUSD",
+];
 // Real currency pairs only — used anywhere the user is picking pairs to trade/copy
-// ("my pairs fix to allow only for forex"). XAUUSD/BTCUSD stay visible as market
+// ("my pairs fix to allow only for forex"). Metals/crypto stay visible as market
 // info on the Prices ticker but are excluded from signal generation & copy filters.
-const FOREX_PAIRS = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","USDCHF","NZDUSD","EURGBP","EURJPY","GBPJPY"];
+const FOREX_PAIRS = PAIRS.filter((p) => !["XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD"].includes(p));
 const TFS   = ["M1","M5","M15","M30","H1","H4","D1","W1"];
 
 // Broker-style quote precision — JPY crosses & metals trade in fewer decimals,
@@ -608,8 +818,9 @@ function pairDecimals(pair) {
   if (!pair) return 5;
   if (pair.includes("JPY")) return 3;
   if (pair === "XAUUSD") return 2;
+  if (pair === "XAGUSD") return 3;
   if (pair === "BTCUSD") return 2;
-  return 5;
+  return 4;
 }
 
 export { ConfRing, CandleChart1, SigCard, PAIRS, FOREX_PAIRS, TFS, pairDecimals };

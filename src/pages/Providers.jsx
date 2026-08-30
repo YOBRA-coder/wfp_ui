@@ -72,7 +72,7 @@ export default function Providers({ api }) {
     execution_mode: "immediate", trigger_price: "", execute_live: false, analysis: "" });
   const [sigBusy, setSigBusy] = useState(false);
   const [sigErr, setSigErr] = useState("");
-  const [sigOk, setSigOk] = useState("");
+  const [query, setQuery] = useState("");
 
   const loadEarnings = () => {
     api.get("/providers/me/earnings").then(setEarnings).catch(() => setEarnings(null));
@@ -388,7 +388,24 @@ export default function Providers({ api }) {
       <Grid cols="1fr 1fr" gap={16}>
         {/* Provider cards */}
         <div>
-          {list.map(p => {
+          <div style={{ marginBottom: 12 }}>
+            <Inp
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search providers by name or pair (e.g. GBPJPY)…"
+            />
+          </div>
+          {list
+            .filter(p => {
+              const q = query.trim().toUpperCase();
+              if (!q) return true;
+              const inName = (p.display_name || "").toUpperCase().includes(q) || (p.username || "").toUpperCase().includes(q);
+              let prefPairs = [];
+              try { prefPairs = JSON.parse(p.preferred_pairs || "[]"); } catch { /* malformed/empty — treat as no preferred pairs */ }
+              const inPairs = Array.isArray(prefPairs) && prefPairs.some(pr => String(pr).toUpperCase().includes(q));
+              return inName || inPairs;
+            })
+            .map(p => {
             const following = myIds.includes(p.user_id);
             return (
               <div key={p.id} onClick={() => openDetail(p)} style={{
@@ -424,10 +441,26 @@ export default function Providers({ api }) {
               </div>
             );
           })}
+          {list.length > 0 && query.trim() && !list.some(p => {
+            const q = query.trim().toUpperCase();
+            const inName = (p.display_name || "").toUpperCase().includes(q) || (p.username || "").toUpperCase().includes(q);
+            let prefPairs = [];
+            try { prefPairs = JSON.parse(p.preferred_pairs || "[]"); } catch { /* malformed/empty */ }
+            return inName || (Array.isArray(prefPairs) && prefPairs.some(pr => String(pr).toUpperCase().includes(q)));
+          }) && (
+            <div style={{ color: C.muted, fontSize: 12, padding: "16px 4px", textAlign: "center" }}>
+              No providers match "{query}"
+            </div>
+          )}
+          {list.length === 0 && (
+            <div style={{ color: C.muted, fontSize: 12, padding: "16px 4px", textAlign: "center" }}>
+              No providers yet — be the first to become one above.
+            </div>
+          )}
         </div>
 
         {/* Provider detail */}
-        {detail && (
+        {detail ? (
           <Card>
             <SectionTitle>{detail.display_name} — Performance</SectionTitle>
             <Grid cols="repeat(4,minmax(0,1fr))"  mobileCols="1fr 1fr" gap={12} style={{ marginBottom: 18 }}>
@@ -449,6 +482,12 @@ export default function Providers({ api }) {
                 <Badge col={{ STRONG: C.green, MODERATE: C.gold, WEAK: "#f97316" }[s.strength] || C.muted}>{s.strength}</Badge>
               </Row>
             ))}
+          </Card>
+        ) : (
+          <Card style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 220, textAlign: "center" }}>
+            <div style={{ color: C.muted, fontSize: 12, padding: 20 }}>
+              Tap a provider on the left to see their win rate, pip history, and recent signals here.
+            </div>
           </Card>
         )}
       </Grid>

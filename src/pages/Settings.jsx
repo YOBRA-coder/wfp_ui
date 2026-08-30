@@ -5,6 +5,7 @@ import { C } from "../utils/constants.jsx";
 import { Card, SectionTitle, Btn, FG, Inp, Sel, OkBox, ErrBox, useMobile } from "../shared/Shared.jsx";
 import InstallApp from "../components/InstallApp.jsx";
 import PushNotifications from "../components/PushNotifications.jsx";
+import PasswordField from "../shared/PasswordField.jsx";
 
 export default function Settings({ api, user, setUser }) {
   const mobile = useMobile();
@@ -135,9 +136,14 @@ export default function Settings({ api, user, setUser }) {
 
       <Card>
         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Change password</div>
-        <FG label="Current password"><Inp type="password" value={pwd.current_password} onChange={e => setPwd(p => ({ ...p, current_password: e.target.value }))} /></FG>
-        <FG label="New password"><Inp type="password" value={pwd.new_password} onChange={e => setPwd(p => ({ ...p, new_password: e.target.value }))} /></FG>
-        <FG label="Confirm new password"><Inp type="password" value={pwd.confirm} onChange={e => setPwd(p => ({ ...p, confirm: e.target.value }))} /></FG>
+        <FG label="Current password"><PasswordField value={pwd.current_password} onChange={e => setPwd(p => ({ ...p, current_password: e.target.value }))} autoComplete="current-password" /></FG>
+        <FG label="New password"><PasswordField value={pwd.new_password} onChange={e => setPwd(p => ({ ...p, new_password: e.target.value }))} showStrength autoComplete="new-password" /></FG>
+        <FG label="Confirm new password">
+          <PasswordField value={pwd.confirm} onChange={e => setPwd(p => ({ ...p, confirm: e.target.value }))} autoComplete="new-password" />
+          {pwd.confirm && pwd.confirm !== pwd.new_password && (
+            <div style={{ fontSize: 10, color: C.red, marginTop: 4 }}>Passwords don't match</div>
+          )}
+        </FG>
         {pwdOk && <OkBox msg={pwdOk} />}
         <ErrBox msg={pwdErr} />
         <Btn col={C.gold} onClick={savePassword} disabled={pwdBusy}>{pwdBusy ? "Updating…" : "Update Password"}</Btn>

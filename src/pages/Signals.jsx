@@ -1,5 +1,5 @@
 // ─── Signals ──────────────────────────────────────────────────────────────────
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { C } from "../utils/constants.jsx";
 import { Card, SectionTitle, Grid, Btn, Sel, FG, Pill, useMobile } from "../shared/Shared.jsx";
@@ -9,6 +9,7 @@ import { PAIRS, FOREX_PAIRS, TFS } from "../components/Charts.jsx";
 import { ChartWrap, Badge, ErrBox,Stat } from "../shared/Shared.jsx";
 import { WS_BASE } from "../api/Api.jsx";
 import { useLiveSocket } from "../hooks/useLiveSocket.js";
+import { useSyncedMarketPrefs } from "../utils/marketPrefs.js";
 
 const SIGNALS_WS_URL = `${WS_BASE}/ws/signals`;
 
@@ -16,17 +17,21 @@ export default function Signals({ api }) {
   const mobile = useMobile();
   const [searchParams] = useSearchParams();
   const [lastCopied, setLastCopied] = useState(null); // { pair, direction } — shown as a "view in Copy Trading" banner
-  const [pair,    setPair]    = useState("EURUSD");
-  const [tf,      setTf]      = useState("H1");
+  const { prefs: marketPrefs, setTimeframe: syncTimeframe } = useSyncedMarketPrefs(api, true);
+  const [pair,    setPair]    = useState(marketPrefs.watchlist[0] || "EURUSD");
+  const [tf,      setTfRaw]   = useState(marketPrefs.timeframe || "H1");
+  const setTf = useCallback((v) => { setTfRaw(v); syncTimeframe(v); }, [syncTimeframe]);
   const [sigs,    setSigs]    = useState([]);
   const [sel,     setSel]     = useState(null);
   const [bars,    setBars]    = useState([]);
   const [busy,    setBusy]    = useState(false);
-  const [bulkP,   setBulkP]   = useState(["EURUSD","GBPUSD","USDJPY","GBPJPY","USDCHF","AUDUSD","USDCAD","NZDUSD"]);
+  const [bulkP,   setBulkP]   = useState(marketPrefs.watchlist.length ? marketPrefs.watchlist : ["EURUSD","GBPUSD","USDJPY","GBPJPY","USDCHF","AUDUSD","USDCAD","NZDUSD"]);
   const [bulkTf,  setBulkTf]  = useState(["H1","H4"]);
   const [minConf, setMinConf] = useState(0);
   const [dirF,    setDirF]    = useState("ALL");
   const [subTab,  setSubTab]  = useState("gen"); // gen | history
+  const [pendingReview, setPendingReview] = useState([]);
+  const [pendingBusy, setPendingBusy] = useState(null); // signal id currently being approved/rejected
   const [hPair,   setHPair]   = useState("EURUSD");
   const [hTf,     setHTf]     = useState("H1");
   const [hPer,    setHPer]    = useState("1M");
@@ -55,6 +60,8 @@ export default function Signals({ api }) {
     api.get("/bridge/status").then((d) => setBridgeReady(!!d.has_token)).catch(() => {});
     loadUsage();
   }, [api, loadUsage]);
+
+  // (timeframe sync now handled by setTf → useSyncedMarketPrefs, no separate effect needed)
 
   const copySignal = async (sigId, sigObj) => {
     setCopyBusy(sigId); setCopyErr(""); setLastCopied(null);
@@ -90,11 +97,32 @@ export default function Signals({ api }) {
   const liveStatus = useLiveSocket(SIGNALS_WS_URL, onSignalMsg);
 
   // Fetch chart when signal selected
-  useEffect(() => {
+  const loadSelChartRef = useRef(null);
+  const loadSelChart = useCallback(() => {
     if (!sel) return;
     api.get(`/prices/chart?pair=${sel.pair}&timeframe=${sel.timeframe}&candles=80`)
       .then(d => setBars(d.candles || [])).catch(() => {});
   }, [sel, api]);
+  loadSelChartRef.current = loadSelChart;
+
+  useEffect(() => {
+    setBars([]); // clear the previous signal's candles immediately on switch
+    loadSelChart();
+  }, [sel, loadSelChart]);
+
+  // ── Live candle stream for the selected signal's pair/timeframe — the detail
+  // chart used to be a one-shot REST fetch with no live updates at all. ──
+  const [liveCandle, setLiveCandle] = useState(null);
+  const selCandleWsUrl = sel ? `${WS_BASE}/ws/candles?pair=${sel.pair}&timeframe=${sel.timeframe}` : null;
+  const onSelCandleMsg = useCallback((d) => {
+    if (d?.type === "candle_update" && d.candle) {
+      setLiveCandle(d.candle);
+    } else if (d?.type === "candle_closed") {
+      loadSelChartRef.current && loadSelChartRef.current();
+    }
+  }, []);
+  const selCandleStatus = useLiveSocket(selCandleWsUrl, onSelCandleMsg);
+  useEffect(() => { setLiveCandle(null); }, [sel?.id]);
 
   const [delayInfo, setDelayInfo] = useState(null); // { plan_delay_minutes, realtime_signals_locked }
 
@@ -112,6 +140,29 @@ export default function Signals({ api }) {
     }).catch(() => {});
   }, []);
 
+  const loadPendingReview = useCallback(() => {
+    api.get("/signals/pending-review").then(d => setPendingReview(d.signals || [])).catch(() => {});
+  }, [api]);
+
+  useEffect(() => { loadPendingReview(); }, [loadPendingReview]);
+
+  const approveSignal = async (id) => {
+    setPendingBusy(id);
+    try {
+      await api.post(`/signals/${id}/approve`);
+      setPendingReview((p) => p.filter((s) => s.id !== id));
+    } catch (e) { alert(e.message); }
+    finally { setPendingBusy(null); }
+  };
+  const rejectSignal = async (id) => {
+    setPendingBusy(id);
+    try {
+      await api.post(`/signals/${id}/reject`);
+      setPendingReview((p) => p.filter((s) => s.id !== id));
+    } catch (e) { alert(e.message); }
+    finally { setPendingBusy(null); }
+  };
+
   const generate = async () => {
     setBusy(true); setGenErr("");
     try {
@@ -119,6 +170,7 @@ export default function Signals({ api }) {
       setSigs(p => [s, ...p.slice(0, 19)]);
       setSel(s);
       loadUsage();
+      if (s.needs_approval) loadPendingReview();
     } catch (e) { setGenErr(e.message); }
     finally { setBusy(false); }
   };
@@ -169,7 +221,9 @@ export default function Signals({ api }) {
             <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{s.timeframe} · {s.entry_time}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {s.status === "closed" ? (
+            {s.approval_status === "pending_review" ? (
+              <Badge col={C.gold}>⏳ Awaiting your approval</Badge>
+            ) : s.status === "closed" ? (
               <Badge col={s.result === "win" ? C.green : s.result === "loss" ? C.red : C.muted}>
                 {(s.result || "").toUpperCase()} · {s.pnl_pips >= 0 ? "+" : ""}{f1(s.pnl_pips)} pips
               </Badge>
@@ -195,6 +249,13 @@ export default function Signals({ api }) {
             <ConfRing val={s.confidence} size={60} />
           </div>
         </div>
+        {s.approval_status === "pending_review" && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8,
+                        background: `${C.gold}14`, border: `1px solid ${C.gold}40`, borderRadius: 8,
+                        padding: "9px 12px", marginBottom: 10, fontSize: 12 }}>
+            <span>This signal hasn't been sent to your followers yet — approve it above to distribute, or reject to discard it.</span>
+          </div>
+        )}
         {lastCopied && lastCopied.pair === s.pair && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
                         background: `${C.green}18`, border: `1px solid ${C.green}40`, borderRadius: 8,
@@ -226,11 +287,15 @@ export default function Signals({ api }) {
             resetKey={`${s.id}_${s.pair}_${s.timeframe}`}
             pair={s.pair}
             timeframe={s.timeframe}
+            api={api}
             height={mobile ? 320 : 560}
             entry={s.entry_price} sl={s.stop_loss} tp={s.take_profit}
             markers={s.markers || []}
             supportResistance={s.support_resistance || []}
             trendline={s.trendline || null}
+            liveCandle={liveCandle}
+            live={selCandleStatus === "open"}
+            indicators={marketPrefs.indicators}
           />
         </ChartWrap>
 
@@ -288,6 +353,35 @@ export default function Signals({ api }) {
         <Btn col={subTab === "history" ? C.gold : C.muted} ghost={subTab !== "history"} onClick={() => setSubTab("history")} style={{ fontSize: 11, padding: "6px 14px" }}>📊 History</Btn>
         <Btn col={subTab === "backtest" ? C.gold : C.muted} ghost={subTab !== "backtest"} onClick={() => setSubTab("backtest")} style={{ fontSize: 11, padding: "6px 14px" }}>🧪 Backtest</Btn>
       </div>
+
+      {pendingReview.length > 0 && (
+        <div style={{ background: `${C.gold}10`, border: `1px solid ${C.gold}45`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 16 }}>⏳</span>
+            <strong style={{ fontSize: 13 }}>Awaiting your approval ({pendingReview.length})</strong>
+            <span style={{ fontSize: 11, color: C.muted }}>— your followers won't see these until you confirm each one</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {pendingReview.map((s) => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#0b1723", border: "1px solid #1f2937", borderRadius: 8, padding: "8px 12px" }}>
+                <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
+                <strong style={{ fontSize: 13 }}>{s.pair}</strong>
+                <Badge col={C.muted}>{s.timeframe}</Badge>
+                <span style={{ fontSize: 11, fontFamily: "monospace" }}>Entry {fp(s.entry_price)}</span>
+                <span style={{ fontSize: 11, color: C.gold }}>{s.confidence}% confidence</span>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                  <Btn col={C.red} ghost onClick={() => rejectSignal(s.id)} disabled={pendingBusy === s.id} style={{ fontSize: 11, padding: "5px 12px" }}>
+                    {pendingBusy === s.id ? "…" : "✗ Reject"}
+                  </Btn>
+                  <Btn col={C.green} onClick={() => approveSignal(s.id)} disabled={pendingBusy === s.id} style={{ fontSize: 11, padding: "5px 12px" }}>
+                    {pendingBusy === s.id ? "…" : "✓ Approve — send to followers"}
+                  </Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {delayInfo && delayInfo.delay > 0 && delayInfo.locked > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,

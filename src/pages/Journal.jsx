@@ -49,17 +49,28 @@ export default function Journal({ api }) {
             : (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "75px 50px 95px 95px 75px 75px 1fr", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.border}`, fontSize: 9, color: C.muted, letterSpacing: 1, fontWeight: 700 }}>
-                  {["PAIR","DIR","ENTRY","EXIT","P&L","PIPS","SETUP"].map(h => <span key={h}>{h}</span>)}
+                  {["PAIR","DIR","ENTRY","EXIT","P&L","PIPS","SETUP / SOURCE"].map(h => <span key={h}>{h}</span>)}
                 </div>
                 {trades.map(t => (
-                  <div key={t.id} style={{ display: "grid", gridTemplateColumns: "75px 50px 95px 95px 75px 75px 1fr", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.border}20`, alignItems: "center", fontSize: 12 }}>
+                  <div key={`${t.source}_${t.id}`} style={{ display: "grid", gridTemplateColumns: "75px 50px 95px 95px 75px 75px 1fr", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.border}20`, alignItems: "center", fontSize: 12 }}>
                     <strong>{t.pair}</strong>
                     <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>
                     <span style={{ fontFamily: "monospace", fontSize: 11 }}>{fp(t.entry_price)}</span>
                     <span style={{ fontFamily: "monospace", fontSize: 11 }}>{fp(t.exit_price)}</span>
                     <span style={{ fontWeight: 700, color: Number(t.pnl_usd) >= 0 ? C.green : C.red }}>{usd(t.pnl_usd)}</span>
                     <span style={{ color: Number(t.pnl_pips) >= 0 ? C.green : C.red }}>{f1(t.pnl_pips)}p</span>
-                    <span style={{ fontSize: 11, color: C.muted, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.setup || t.notes}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.muted, overflow: "hidden" }}>
+                      {t.source === "copy" ? (
+                        <>
+                          <Badge col={t.status === "failed" ? C.red : C.purple}>{t.status === "failed" ? "FAILED" : "COPY"}</Badge>
+                          <span style={{ textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" }}>
+                            {t.status === "failed" ? (t.fail_reason || "Execution failed") : (t.provider_name || "—")}
+                          </span>
+                        </>
+                      ) : (
+                        <span style={{ textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" }}>{t.setup || t.notes}</span>
+                      )}
+                    </span>
                   </div>
                 ))}
               </>

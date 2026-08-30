@@ -6,6 +6,15 @@ import { useState, useEffect } from "react";
 import { C } from "../utils/constants.jsx";
 import { Card, SectionTitle, Btn, ErrBox } from "../shared/Shared.jsx";
 
+const CATEGORY_LABELS = {
+  signal: ["Signals", "New signals from providers you follow"],
+  copy: ["Copy Trading", "Trade copied, closed, or needs your review"],
+  trade_closed: ["Trade Closes", "SL/TP hits and MT5 fills on real trades"],
+  billing: ["Billing & Wallet", "Deposits, subscription renewals, withdrawals"],
+  system: ["Account", "Email verified, MT5 bridge disconnects, Telegram linked"],
+  education: ["Education", "Course completions and milestones"],
+};
+
 // Web Push wants the VAPID key as a raw Uint8Array, not the base64url string
 // the backend gives us — this is the standard conversion.
 function urlBase64ToUint8Array(base64String) {
@@ -25,6 +34,7 @@ export default function PushNotifications({ api }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [serverReady, setServerReady] = useState(true);
+  const [categories, setCategories] = useState(null); // null while loading
 
   useEffect(() => {
     if (!isSupported()) return;
@@ -33,6 +43,18 @@ export default function PushNotifications({ api }) {
       setSubscribed(!!sub);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    api.get("/prefs/notifications").then((d) => setCategories(d.categories)).catch(() => setCategories({}));
+  }, [api]);
+
+  const toggleCategory = (key) => {
+    setCategories((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      api.put("/prefs/notifications", { categories: { [key]: next[key] } }).catch(() => {});
+      return next;
+    });
+  };
 
   const enable = async () => {
     setBusy(true); setErr("");
@@ -93,11 +115,38 @@ export default function PushNotifications({ api }) {
       ) : subscribed ? (
         <>
           <div style={{ fontSize: 12, color: C.green, fontWeight: 600, marginBottom: 8 }}>✓ Enabled on this device</div>
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
             You'll get a notification here for signals from providers you follow and when your trades close —
             even when the app isn't open.
           </div>
-          <Btn col={C.muted} ghost onClick={disable} disabled={busy}>{busy ? "…" : "Turn off"}</Btn>
+
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>What sends a push</div>
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
+            Everything still shows up in your notification bell either way — this only controls what's worth
+            interrupting you for.
+          </div>
+          {categories === null ? (
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>Loading…</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+              {Object.entries(CATEGORY_LABELS).map(([key, [label, desc]]) => (
+                <label key={key} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: C.text, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={categories[key] !== false}
+                    onChange={() => toggleCategory(key)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <span style={{ fontWeight: 600 }}>{label}</span>
+                    <span style={{ display: "block", fontSize: 10.5, color: C.muted }}>{desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <Btn col={C.muted} ghost onClick={disable} disabled={busy}>{busy ? "…" : "Turn off all push"}</Btn>
         </>
       ) : permission === "denied" ? (
         <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>

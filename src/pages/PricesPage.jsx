@@ -24,15 +24,18 @@ import { fp, fpc, f2, usd } from "../utils/utils.js";
 import { CandleChart1, PAIRS, FOREX_PAIRS, TFS, pairDecimals } from "../components/Charts.jsx";
 import { WS_BASE } from "../api/Api.jsx";
 import { useLiveSocket } from "../hooks/useLiveSocket.js";
-
-const MARKET_LIST_PAIRS = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","XAUUSD","BTCUSD","GBPJPY"];
-const PRICES_WS_URL = `${WS_BASE}/ws/prices?pairs=${MARKET_LIST_PAIRS.join(",")}`;
+import { loadMarketPrefs, useSyncedMarketPrefs } from "../utils/marketPrefs.js";
+import PairPicker from "../shared/PairPicker.jsx";
 
 export default function PricesPage({ api }) {
   const [searchParams] = useSearchParams();
+  const { prefs, setWatchlist, setTimeframe, setIndicators } = useSyncedMarketPrefs(api, true);
+  const watchlistPairs = prefs.watchlist; // user's saved "desired markets" — set from Dashboard/here, synced to their account
+  const pricesWsUrl = `${WS_BASE}/ws/prices?pairs=${watchlistPairs.join(",")}`;
   const [prices, setPrices] = useState([]);
-  const [selP, setSelP] = useState(() => searchParams.get("pair") || "EURUSD");
-  const [selTf, setSelTf] = useState("H1");
+  const [selP, setSelP] = useState(() => searchParams.get("pair") || prefs.watchlist[0] || "EURUSD");
+  const [selTf, setSelTfRaw] = useState(() => loadMarketPrefs().timeframe);
+  const setSelTf = useCallback((tf) => { setSelTfRaw(tf); setTimeframe(tf); }, [setTimeframe]);
   const [tfPickerOpen, setTfPickerOpen] = useState(false);
   const [bars, setBars] = useState([]);
   const [markers, setMarkers] = useState([]);
@@ -41,7 +44,9 @@ export default function PricesPage({ api }) {
   const [liveCandle, setLiveCandle] = useState(null);
   const [busy, setBusy] = useState(false);
   const [showWatchlist, setShowWatchlist] = useState(true); // mobile toggle — "Live Markets" panel can be collapsed to give the chart more room
-  const [ind, setInd] = useState({ ema: true, bb: true, sr: true, trendline: true, volume: true });
+  const [pairPickerOpen, setPairPickerOpen] = useState(false);
+  const ind = prefs.indicators;
+  const setInd = setIndicators;
   const [tradePanel, setTradePanel] = useState(false);
   const [lot, setLot] = useState(0.02);
   const [slPips, setSlPips] = useState(30);
@@ -85,9 +90,18 @@ export default function PricesPage({ api }) {
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
-  
+
+  // Keep trades fresh without a manual refresh — this is what makes a trade
+  // opened elsewhere (or hit its SL/TP and closed) auto show/hide on the chart.
+  useEffect(() => {
+    const iv = setInterval(load, 5000);
+    return () => clearInterval(iv);
+  }, [load]);
+
   // list active copy trades of the current pairs active selected by user
   const activeTrades = trades.filter(t => t.status === "open" && t.pair === selP);
+  const allOpenTrades = trades.filter(t => t.status === "open");
+  const [watchlistFilter, setWatchlistFilter] = useState("all"); // "all" | "active" — Live Markets panel toggle
 
   useEffect(() => {
     if (!selectedTradeId) { setCopyTrade(null); return; }
@@ -145,18 +159,31 @@ export default function PricesPage({ api }) {
     finally { setCtBusy(false); }
   };
 
-  // ── Live market watchlist (left panel) ──
+  // ── Live market watchlist (left panel) — uses the saved "desired markets" list ──
   const onPricesMsg = useCallback((d) => {
     if (d?.type === "prices" && Array.isArray(d.data)) setPrices(d.data);
   }, []);
-  const priceStatus = useLiveSocket(PRICES_WS_URL, onPricesMsg);
+  const priceStatus = useLiveSocket(pricesWsUrl, onPricesMsg);
 
   useEffect(() => {
-    if (prices.length) return;
-    api.get("/prices/live?pairs=" + MARKET_LIST_PAIRS.join(","))
+    setPrices([]); // stale entries from the previous watchlist shouldn't linger
+    api.get("/prices/live?pairs=" + watchlistPairs.join(","))
       .then((d) => setPrices(d.prices || []))
       .catch(() => {});
-  }, [api]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api, watchlistPairs.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // (timeframe/indicator changes now persist via setSelTf/setInd → useSyncedMarketPrefs, no separate effect needed)
+
+  // Clear the old pair/timeframe's data the instant the user switches — otherwise
+  // the previous chart just sits there frozen (mislabeled with the new pair)
+  // until the REST fetch below resolves, with no indication anything is loading.
+  useEffect(() => {
+    setBars([]);
+    setMarkers([]);
+    setSr([]);
+    setTrendline(null);
+    setLiveCandle(null);
+  }, [selP, selTf]);
 
   // ── Chart data (REST — full bar history + annotations) ──
   const loadChart = useCallback(async () => {
@@ -233,6 +260,35 @@ export default function PricesPage({ api }) {
           <SectionTitle>Live Markets</SectionTitle>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={() => setPairPickerOpen(true)}
+              title="Search all pairs / manage watchlist"
+              style={{ background: "none", border: "1px solid #1f2937", borderRadius: 6, color: C.gold, fontSize: 11, padding: "4px 9px", cursor: "pointer", fontWeight: 700 }}
+            >
+              + Add pairs
+            </button>
+            <div style={{ display: "flex", background: "#0f172a", border: "1px solid #1f2937", borderRadius: 7, padding: 2 }}>
+              <button
+                onClick={() => setWatchlistFilter("all")}
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 5, border: "none", cursor: "pointer",
+                  background: watchlistFilter === "all" ? C.gold : "transparent",
+                  color: watchlistFilter === "all" ? "#071018" : "#94a3b8",
+                }}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setWatchlistFilter("active")}
+                style={{
+                  fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 5, border: "none", cursor: "pointer",
+                  background: watchlistFilter === "active" ? C.gold : "transparent",
+                  color: watchlistFilter === "active" ? "#071018" : "#94a3b8",
+                }}
+              >
+                Active trades ({allOpenTrades.length})
+              </button>
+            </div>
             {mobile && (
               <button
                 onClick={() => setShowWatchlist(s => !s)}
@@ -265,7 +321,7 @@ export default function PricesPage({ api }) {
             paddingRight: 4,
           }}
         >
-          {prices.map((p) => {
+          {(watchlistFilter === "active" ? prices.filter(p => allOpenTrades.some(t => t.pair === p.pair)) : prices).map((p) => {
             const up = p.direction === "up";
 
             return (
@@ -602,11 +658,28 @@ export default function PricesPage({ api }) {
 
         {/* Chart */}
         <ChartWrap>
-          <CandleChart1
+          <div style={{ position: "relative" }}>
+            {(busy || !bars.length) && (
+              <div style={{
+                position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", gap: 10,
+                background: "rgba(7,16,24,0.72)", borderRadius: 18,
+              }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: "50%",
+                  border: `3px solid ${C.border}`, borderTopColor: C.gold,
+                  animation: "spin 0.8s linear infinite",
+                }} />
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>Loading {selP} · {selTf}…</span>
+                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              </div>
+            )}
+            <CandleChart1
             bars={bars}
             resetKey={`${selP}_${selTf}`}
             pair={selP}
             timeframe={selTf}
+            api={api}
             onTfClick={() => setTfPickerOpen(true)}
             height={mobile ? 380 : 560}
             entry={copyTrade?.entry_price}
@@ -628,14 +701,25 @@ export default function PricesPage({ api }) {
               setAdjSl(String(trade.stop_loss ?? ""));
               setAdjTp(String(trade.take_profit ?? ""));
             }
-            
+
           }
           />
+          </div>
         </ChartWrap>
       </Card>
+
+      {pairPickerOpen && (
+        <PairPicker
+          api={api}
+          watchlist={watchlistPairs}
+          onToggle={(pair) => setWatchlist((prev) => prev.includes(pair) ? prev.filter((p) => p !== pair) : [...prev, pair])}
+          onClose={() => setPairPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }
+
 
 function IndToggle({ on, onClick, colors, label }) {
   return (
