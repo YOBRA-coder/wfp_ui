@@ -84,19 +84,32 @@ export function useLiveSocket(url, onMessage) {
       cbRef.current && cbRef.current(data);
     };
     entry.listeners.add(listener);
+    
     return () => {
       entry.listeners.delete(listener);
       if (entry.listeners.size === 0) {
         clearTimeout(entry.timer);
-        try {
-          entry.ws && entry.ws.close();
-        } catch {
-          /* noop */
-        }
-        registry.delete(url);
+        // Save a reference to the active socket context
+        const currentWs = entry.ws;
+        const currentUrl = url;
+        
+        // Wrap closure in a 50ms macro timeout.
+        // If a new component mounts or timeframe changes instantly, 
+        // it re-allocates registry keys prior to execution, preventing socket thrashing.
+        setTimeout(() => {
+          if (registry.has(currentUrl) && registry.get(currentUrl).listeners.size === 0) {
+            try {
+              currentWs && currentWs.close();
+            } catch {
+              /* noop */
+            }
+            registry.delete(currentUrl);
+          }
+        }, 50);
       }
     };
   }, [url]);
+
 
   return status;
 }

@@ -315,6 +315,7 @@ export default function CandleChart1({
     e.preventDefault();
     setDrawingRect({ t1: rectStartRef.current.t, p1: rectStartRef.current.p, t2: pt.t, p2: pt.p });
   };
+
   const handleDrawEnd = (e) => {
     if (tool !== "rect" || !rectStartRef.current) return;
     const pt = canvasPointToTimePrice(e);
@@ -594,7 +595,7 @@ export default function CandleChart1({
       tpLineRef.current = tpLine;
     });
 
-    if (indicators.sr) (supportResistance || []).forEach((lvl) => {
+   if (indicators.sr) (supportResistance || []).forEach((lvl) => {
       const isRes = lvl.type === "resistance";
       priceLinesRef.current.push(candleSeries.createPriceLine({
         price: Number(lvl.price),
@@ -604,12 +605,12 @@ export default function CandleChart1({
       }));
     });
 
+    // CHANGE: Guard this state update so it never sets layout data to undefined if bars array is blank
     const last = bars[bars.length - 1];
-    setHover((h) => h ?? { o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume ?? null, time: last.time });
+    if (last) {
+      setHover((h) => h ?? { o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume ?? null, time: last.time });
+    }
 
-    // Fit the view exactly once per chart instance (first data this resetKey
-    // sees). Every later update here — new candle, new trade, refreshed S/R —
-    // leaves pan/zoom untouched.
     const chart = chartRef.current;
     if (chart && !visibleRangeRef.current) {
       chart.timeScale().fitContent();
