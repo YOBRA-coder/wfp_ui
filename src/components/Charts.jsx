@@ -238,7 +238,6 @@ export default function CandleChart1({
     } catch { setDrawings([]); }
     setTool("none");
     setActivePreview(null);
-    redrawRects
     if (api && pair && timeframe) {
       api.get(`/prefs/drawings?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}`)
         .then((res) => {
