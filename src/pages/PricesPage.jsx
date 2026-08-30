@@ -659,7 +659,7 @@ export default function PricesPage({ api }) {
         {/* Chart */}
         <ChartWrap>
           <div style={{ position: "relative" }}>
-            {(busy || !bars.length) && (
+            {(!bars.length) && (
               <div style={{
                 position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 10,
