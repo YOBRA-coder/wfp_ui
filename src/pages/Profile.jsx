@@ -1,7 +1,7 @@
 // ─── Profile / MT5 ────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback } from "react";
 import { C } from "../utils/constants.jsx";
-import { Card, SectionTitle, Stat, Badge, Row, Grid, Btn, FG, Inp, Sel, Modal, OkBox, InfoBox, ErrBox } from "../shared/Shared.jsx";
+import { Card, SectionTitle, useMobile, Badge, Row, Grid, Btn, FG, Inp, Sel, Modal, OkBox, InfoBox, ErrBox } from "../shared/Shared.jsx";
 import { ago, fp, f1 } from "../utils/utils.js";
 import { API } from "../api/Api.jsx";
 
@@ -9,7 +9,7 @@ export default function Profile({ api, user, setUser }) {
   const [form, setForm] = useState({ bio: user?.bio || "", broker: user?.broker || "", mt5_login: user?.mt5_login || "", mt5_server: user?.mt5_server || "" });
   const [busy, setBusy] = useState(false);
   const [ok,   setOk]   = useState("");
-
+   const mobile = useMobile();
   const [bridge, setBridge] = useState(null); // { has_token, bridge_token, connected, last_seen }
   const [bridgeBusy, setBridgeBusy] = useState(false);
   const [bridgeErr, setBridgeErr] = useState("");
@@ -56,7 +56,7 @@ export default function Profile({ api, user, setUser }) {
   const F = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: mobile ? 12 : 20, maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <Grid cols="1fr 1fr" gap={16}>
         <Card>
           <SectionTitle>Account Info</SectionTitle>
