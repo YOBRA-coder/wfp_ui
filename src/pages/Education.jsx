@@ -89,7 +89,7 @@ const correctCount = safeLessonQuiz.reduce((n, q, i) =>
     const pct    = Math.round((idx / lessons.length) * 100);
     const isLast = idx === lessons.length - 1;
     return (
-      <div style={{ padding: 20 }}>
+      <div style={{ padding: 20, marginBottom: 40 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
           <Btn col={C.muted} ghost onClick={() => setActive(null)}>← Back to Courses</Btn>
           <div style={{ fontSize: 11, color: C.muted }}>{idx + 1} / {lessons.length} lessons · ~{lesson.duration || 5} min</div>
@@ -200,7 +200,7 @@ const correctCount = safeLessonQuiz.reduce((n, q, i) =>
   const categories = Array.from(new Set(courses.map((c) => c.category))).filter(Boolean);
 
   return (
-   <div style={{ padding: mobile ? 12 : 20, maxWidth: "100%", boxSizing: "border-box" }}>
+   <div style={{ padding: mobile ? 12 : 20, marginBottom: 30, maxWidth: "100%", boxSizing: "border-box" }}>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 14 }}>
         <div>
