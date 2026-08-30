@@ -16,6 +16,7 @@ export default function Education({ api }) {
   const [levelFilter, setLevelFilter] = useState("all"); // all | beginner | intermediate | advanced
   const [catFilter,   setCatFilter]   = useState("all"); // all | basics | technical | risk | psychology | advanced
   const [search,       setSearch]     = useState("");
+  const mobile = window.innerWidth < 768;
 
   const loadAll = useCallback(() => {
     api.get("/education/courses").then(d => setCourses(d.courses || [])).catch(() => {});
@@ -199,7 +200,8 @@ const correctCount = safeLessonQuiz.reduce((n, q, i) =>
   const categories = Array.from(new Set(courses.map((c) => c.category))).filter(Boolean);
 
   return (
-    <div style={{ padding: 20 }}>
+   <div style={{ padding: mobile ? 12 : 20, maxWidth: "100%", boxSizing: "border-box" }}>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 14 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 3 }}>Learning Hub</div>
