@@ -211,7 +211,7 @@ export default function CandleChart1({
   // pixels), so they stay anchored to the correct candles/prices across pan,
   // zoom, resize, and reload. Persisted to localStorage per pair+timeframe.
   const canvasRef = useRef(null);
-  const rectStartRef = useRef(null);
+  const dragStartRef = useRef(null);
   const storageKey = `yobbyfx_drawings_${drawingKey || resetKey || pair}`;
   const [tool, setTool] = useState("none"); // "none" | "rect"
   const [rects, setRects] = useState([]);
@@ -220,112 +220,159 @@ export default function CandleChart1({
   const drawingRectRef = useRef(drawingRect); drawingRectRef.current = drawingRect;
 
   const hydratedRef = useRef(false); // true once we know we have the real (server-confirmed) rect set — guards against echoing a stale local cache back over the server's copy
+    // Supported types: "none" | "horizontal" | "vertical" | "trend" | "rect"
+  const [drawings, setDrawings] = useState([]); // Array of { id, type, t1, p1, t2, p2 }
+  const [activePreview, setActivePreview] = useState(null);
+
+  const drawingsRef = useRef(drawings); drawingsRef.current = drawings;
+  const previewRef = useRef(activePreview); previewRef.current = activePreview;
 
   // Load saved rectangles whenever the chart/pair/timeframe changes. When an
   // `api` client is passed, the account's saved drawings (from the backend)
   // are the source of truth — localStorage is only the offline/instant-paint
   // fallback, and gets overwritten by whatever the server returns.
+  // Sync / Load drawings
   useEffect(() => {
-    if (!enableDrawing) { setRects([]); return; }
-    let cancelled = false;
-    hydratedRef.current = !api; // no api → local cache IS the source of truth, safe to save immediately
-    // Instant local paint first so pan/zoom isn't blocked on the network.
+    if (!enableDrawing) { setDrawings([]); return; }
+    hydratedRef.current = !api;
     try {
       const raw = localStorage.getItem(storageKey);
-      setRects(raw ? JSON.parse(raw) : []);
-    } catch { setRects([]); }
+      setDrawings(raw ? JSON.parse(raw) : []);
+    } catch { setDrawings([]); }
     setTool("none");
-    setDrawingRect(null);
+    setActivePreview(null);
+    
     if (api && pair && timeframe) {
       api.get(`/prefs/drawings?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}`)
         .then((res) => {
-          if (cancelled) return;
-          if (Array.isArray(res?.rects)) setRects(res.rects);
-          hydratedRef.current = true; // now safe to push local edits back to the server
+          if (Array.isArray(res?.drawings)) setDrawings(res.drawings);
+          hydratedRef.current = true;
         })
-        .catch(() => { hydratedRef.current = true; /* offline/not-logged-in — local cache from above stands, and IS the source of truth now */ });
+        .catch(() => { hydratedRef.current = true; });
     }
-    return () => { cancelled = true; };
   }, [storageKey, enableDrawing, api, pair, timeframe]);
 
-  // Persist on every change — localStorage always (instant, offline-safe),
-  // backend too once hydrated (skipped during the load race above, so a
-  // stale local cache can't stomp a newer server copy before it arrives).
+  // Save changes
   useEffect(() => {
     if (!enableDrawing) return;
-    try { localStorage.setItem(storageKey, JSON.stringify(rects)); } catch { /* storage full/unavailable — drawings just won't persist */ }
+    try { localStorage.setItem(storageKey, JSON.stringify(drawings)); } catch {}
     if (api && pair && timeframe && hydratedRef.current) {
-      api.put("/prefs/drawings", { pair, timeframe, rects }).catch(() => { /* will retry next change; local copy is already safe */ });
+      api.put("/prefs/drawings", { pair, timeframe, drawings }).catch(() => {});
     }
-  }, [rects, storageKey, enableDrawing, api, pair, timeframe]);
+  }, [drawings, storageKey, enableDrawing, api, pair, timeframe]);
 
-  const redrawRects = useCallback(() => {
+  // ── Multi-Drawing Engine Canvas Renderer ──
+  const redrawAllTools = useCallback(() => {
     const canvas = canvasRef.current, chart = chartRef.current, series = candleSeriesRef.current, host = ref.current;
     if (!canvas || !chart || !series || !host || !enableDrawing) return;
+    
     const w = host.clientWidth, h = height;
     if (canvas.width !== w) canvas.width = w;
     if (canvas.height !== h) canvas.height = h;
+    
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, w, h);
+    
     const ts = chart.timeScale();
-    const draw = (r, preview) => {
-      const t1 = typeof r.t1 === "number" ? r.t1 : toUnixTime(r.t1);
-      const t2 = typeof r.t2 === "number" ? r.t2 : toUnixTime(r.t2);
-      const x1 = ts.timeToCoordinate(t1), x2 = ts.timeToCoordinate(t2);
-      const y1 = series.priceToCoordinate(r.p1), y2 = series.priceToCoordinate(r.p2);
-      if (x1 == null || x2 == null || y1 == null || y2 == null) return;
-      const rx = Math.min(x1, x2), ry = Math.min(y1, y2), rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
-      ctx.fillStyle = preview ? "rgba(250,204,21,0.14)" : "rgba(59,130,246,0.16)";
-      ctx.strokeStyle = preview ? "#facc15" : "#3b82f6";
-      ctx.lineWidth = 1.4;
-      ctx.setLineDash(preview ? [4, 3] : []);
-      ctx.fillRect(rx, ry, rw, rh);
-      ctx.strokeRect(rx, ry, rw, rh);
+
+    const drawItem = (item, isPreview) => {
+      const x1 = ts.timeToCoordinate(typeof item.t1 === "number" ? item.t1 : toUnixTime(item.t1));
+      const y1 = series.priceToCoordinate(item.p1);
+      
+      if (x1 == null || y1 == null) return;
+
+      ctx.lineWidth = isPreview ? 1.5 : 2.0;
+      ctx.strokeStyle = isPreview ? "#facc15" : "#3b82f6";
+      ctx.fillStyle = isPreview ? "rgba(250, 204, 21, 0.15)" : "rgba(59, 130, 246, 0.15)";
+      ctx.setLineDash(isPreview ? [4, 4] : []);
+
+      if (item.type === "horizontal") {
+        ctx.beginPath();
+        ctx.moveTo(0, y1);
+        ctx.lineTo(w, y1);
+        ctx.stroke();
+      } 
+      else if (item.type === "vertical") {
+        ctx.beginPath();
+        ctx.moveTo(x1, 0);
+        ctx.lineTo(x1, h);
+        ctx.stroke();
+      } 
+      else if (item.type === "trend") {
+        const x2 = ts.timeToCoordinate(typeof item.t2 === "number" ? item.t2 : toUnixTime(item.t2));
+        const y2 = series.priceToCoordinate(item.p2);
+        if (x2 == null || y2 == null) return;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      } 
+      else if (item.type === "rect") {
+        const x2 = ts.timeToCoordinate(typeof item.t2 === "number" ? item.t2 : toUnixTime(item.t2));
+        const y2 = series.priceToCoordinate(item.p2);
+        if (x2 == null || y2 == null) return;
+        const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+        const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
+        ctx.fillRect(rx, ry, rw, rh);
+        ctx.strokeRect(rx, ry, rw, rh);
+      }
     };
-    rectsRef.current.forEach((r) => draw(r, false));
-    if (drawingRectRef.current) draw(drawingRectRef.current, true);
+
+    drawingsRef.current.forEach(item => drawItem(item, false));
+    if (previewRef.current) drawItem(previewRef.current, true);
   }, [enableDrawing, height]);
 
-  // Redraw whenever the rectangle set (saved or in-progress) changes.
-  useEffect(() => { redrawRects(); }, [rects, drawingRect, redrawRects]);
+  useEffect(() => { redrawAllTools(); }, [drawings, activePreview, redrawAllTools]);
 
-  function canvasPointToTimePrice(e) {
+  // Coordinate math helpers
+  function getCanvasCoords(e) {
     const canvas = canvasRef.current, chart = chartRef.current, series = candleSeriesRef.current;
     if (!canvas || !chart || !series) return null;
     const box = canvas.getBoundingClientRect();
-    const cx = (e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX) - box.left;
-    const cy = (e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY) - box.top;
+    const cx = (e.clientX ?? e.touches?.[0]?.clientX) - box.left;
+    const cy = (e.clientY ?? e.touches?.[0]?.clientY) - box.top;
     const t = chart.timeScale().coordinateToTime(cx);
     const p = series.coordinateToPrice(cy);
-    if (t == null || p == null) return null;
-    return { t, p };
+    return (t != null && p != null) ? { t, p } : null;
   }
+
   const handleDrawStart = (e) => {
-    if (tool !== "rect") return;
-    const pt = canvasPointToTimePrice(e);
+    if (tool === "none") return;
+    const pt = getCanvasCoords(e);
     if (!pt) return;
     e.preventDefault();
-    rectStartRef.current = pt;
-    setDrawingRect({ t1: pt.t, p1: pt.p, t2: pt.t, p2: pt.p });
+    dragStartRef.current = pt;
+
+    if (tool === "horizontal" || tool === "vertical") {
+      // Instant single-click placement tools
+      setDrawings(prev => [...prev, { id: `draw_${Date.now()}`, type: tool, t1: pt.t, p1: pt.p, t2: pt.t, p2: pt.p }]);
+      setTool("none");
+      dragStartRef.current = null;
+    } else {
+      // Drag-to-stretch lines (Trend, Box Box)
+      setActivePreview({ type: tool, t1: pt.t, p1: pt.p, t2: pt.t, p2: pt.p });
+    }
   };
+
   const handleDrawMove = (e) => {
-    if (tool !== "rect" || !rectStartRef.current) return;
-    const pt = canvasPointToTimePrice(e);
+    if (!dragStartRef.current || !activePreview) return;
+    const pt = getCanvasCoords(e);
     if (!pt) return;
     e.preventDefault();
-    setDrawingRect({ t1: rectStartRef.current.t, p1: rectStartRef.current.p, t2: pt.t, p2: pt.p });
+    setActivePreview(prev => ({ ...prev, t2: pt.t, p2: pt.p }));
   };
 
   const handleDrawEnd = (e) => {
-    if (tool !== "rect" || !rectStartRef.current) return;
-    const pt = canvasPointToTimePrice(e);
-    const start = rectStartRef.current;
-    rectStartRef.current = null;
-    if (pt && start && (pt.t !== start.t || pt.p !== start.p)) {
-      setRects((prev) => [...prev, { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, t1: start.t, p1: start.p, t2: pt.t, p2: pt.p }]);
+    if (!dragStartRef.current || !activePreview) return;
+    const pt = getCanvasCoords(e);
+    const start = dragStartRef.current;
+    dragStartRef.current = null;
+
+    if (pt && start) {
+      setDrawings(prev => [...prev, { id: `draw_${Date.now()}`, type: tool, t1: start.t, p1: start.p, t2: pt.t, p2: pt.p }]);
     }
-    setDrawingRect(null);
-    setTool("none"); // one rectangle per click of the tool button, then back to normal pan/zoom
+    setActivePreview(null);
+    setTool("none"); // reset back to cursor navigation
   };
 
   // Latest props, readable from handlers registered once in the build effect below
@@ -496,7 +543,7 @@ export default function CandleChart1({
     const resize = () => { if (ref.current) chart.applyOptions({ width: ref.current.clientWidth }); redrawRects(); };
     window.addEventListener("resize", resize);
     // Keep drawn rectangles pinned to their time/price as the user pans or zooms.
-    chart.timeScale().subscribeVisibleLogicalRangeChange(redrawRects);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(redrawAllTools);
 
     return () => {
       window.removeEventListener("resize", resize);
@@ -621,10 +668,10 @@ export default function CandleChart1({
 
   // ── Live tick / candle-close updates — no chart rebuild, just series.update() ──
   useEffect(() => {
-    if (!liveCandle || !candleSeriesRef.current || !lastBarTimeRef.current) return;
+    if (!liveCandle || !candleSeriesRef.current) return;
     const t = typeof liveCandle.time === "number" ? liveCandle.time : toUnixTime(liveCandle.time);
     if (t == null) return;
-    if(t<lastBarTimeRef.current) return;
+
     try {
       candleSeriesRef.current.update({
         time: t,
@@ -633,10 +680,16 @@ export default function CandleChart1({
         low: Number(liveCandle.low),
         close: Number(liveCandle.close),
       });
-      lastBarTimeRef.current = t;
-    } catch {
-      /* stale series ref during a rebuild — safe to ignore, next tick will succeed */
+        if (chartRef.current) {
+      chartRef.current.priceScale('right').applyOptions({
+        autoScale: true, // Forces the container to expand/shift to contain the live quote
+      });
     }
+      lastBarTimeRef.current = t;
+    } catch { 
+      if (bars && bars.length > 0) {
+      lastBarTimeRef.current = bars[bars.length - 1].time;
+    } }
   }, [liveCandle]);
 
   const utcHour = new Date().getUTCHours();
@@ -704,6 +757,8 @@ export default function CandleChart1({
         </div>
       )}
       <div ref={ref} style={{ width: "100%", height: `${height}px`, borderRadius: 18, overflow: "hidden", background: "#071018", touchAction: draggableSlTp ? "pan-x" : "auto" }} />
+        <div ref={ref} style={{ width: "100%", height: `${height}px`, borderRadius: 18, overflow: "hidden", background: "#071018", touchAction: draggableSlTp ? "pan-x" : "auto" }} />
+      
       {enableDrawing && (
         <canvas
           ref={canvasRef}
@@ -711,42 +766,60 @@ export default function CandleChart1({
           onTouchStart={handleDrawStart} onTouchMove={handleDrawMove} onTouchEnd={handleDrawEnd}
           style={{
             position: "absolute", left: 0, top: 0, width: "100%", height: `${height}px`, borderRadius: 18,
-            zIndex: 1, cursor: tool === "rect" ? "crosshair" : "default",
-            pointerEvents: tool === "rect" ? "auto" : "none", touchAction: tool === "rect" ? "none" : "auto",
+            zIndex: 1, cursor: tool !== "none" ? "crosshair" : "default",
+            pointerEvents: tool !== "none" ? "auto" : "none", touchAction: tool !== "none" ? "none" : "auto",
           }}
         />
       )}
-      {enableDrawing && (
+
+          {enableDrawing && (
         <div style={{
-          position: "absolute", bottom: 10, left: 10, zIndex: 3, display: "flex", alignItems: "center", gap: 4,
-          background: "rgba(7,16,24,0.85)", border: "1px solid #1e293b", borderRadius: 8, padding: 4,
+          position: "absolute", bottom: 12, left: 12, zIndex: 3, display: "flex", alignItems: "center", gap: 6,
+          background: "rgba(11, 23, 35, 0.9)", border: "1px solid #1f2937", borderRadius: 8, padding: "5px 8px",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)"
         }}>
-          <button
-            onClick={() => setTool((t) => (t === "rect" ? "none" : "rect"))}
-            title="Draw rectangle"
-            style={{
-              width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center",
-              background: tool === "rect" ? `${C.gold}2a` : "transparent",
-              border: `1px solid ${tool === "rect" ? C.gold : "#1e293b"}`,
-              borderRadius: 5, cursor: "pointer", color: tool === "rect" ? C.gold : "#94a3b8", fontSize: 13,
-            }}
-          >▭</button>
-          {rects.length > 0 && (
+          {/* Horizontal Line Tool */}
+          <button onClick={() => setTool(t => t === "horizontal" ? "none" : "horizontal")} title="Horizontal Line"
+            style={{ width: 28, height: 28, background: tool === "horizontal" ? `${C.gold}2a` : "transparent", border: `1px solid ${tool === "horizontal" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "horizontal" ? C.gold : "#94a3b8", fontSize: 13, fontWeight: "bold" }}>
+            ―
+          </button>
+          
+          {/* Vertical Line Tool */}
+          <button onClick={() => setTool(t => t === "vertical" ? "none" : "vertical")} title="Vertical Line"
+            style={{ width: 28, height: 28, background: tool === "vertical" ? `${C.gold}2a` : "transparent", border: `1px solid ${tool === "vertical" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "vertical" ? C.gold : "#94a3b8", fontSize: 13, fontWeight: "bold" }}>
+            ｜
+          </button>
+
+          {/* Trendline Tool */}
+          <button onClick={() => setTool(t => t === "trend" ? "none" : "trend")} title="Trend Line"
+            style={{ width: 28, height: 28, background: tool === "trend" ? `${C.gold}2a` : "transparent", border: `1px solid ${tool === "trend" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "trend" ? C.gold : "#94a3b8", fontSize: 14 }}>
+            ╱
+          </button>
+
+          {/* Box Rectangle Tool */}
+          <button onClick={() => setTool(t => t === "rect" ? "none" : "rect")} title="Box Zone"
+            style={{ width: 28, height: 28, background: tool === "rect" ? `${C.gold}2a` : "transparent", border: `1px solid ${tool === "rect" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "rect" ? C.gold : "#94a3b8", fontSize: 13 }}>
+            ▭
+          </button>
+
+          {drawings.length > 0 && (
             <>
-              <button
-                onClick={() => setRects((prev) => prev.slice(0, -1))}
-                title="Undo last rectangle"
-                style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid #1e293b", borderRadius: 5, cursor: "pointer", color: "#94a3b8", fontSize: 13 }}
-              >↺</button>
-              <button
-                onClick={() => setRects([])}
-                title="Clear all drawings"
-                style={{ width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid #1e293b", borderRadius: 5, cursor: "pointer", color: "#94a3b8", fontSize: 13 }}
-              >✕</button>
+              <div style={{ width: 1, height: 16, background: "#1e293b", margin: "0 4px" }} />
+              {/* Undo Button */}
+              <button onClick={() => setDrawings(prev => prev.slice(0, -1))} title="Undo Last Drawing"
+                style={{ width: 28, height: 28, background: "transparent", border: "1px solid #1e293b", borderRadius: 5, cursor: "pointer", color: "#94a3b8", fontSize: 12 }}>
+                ↺
+              </button>
+              {/* Trash/Clear All */}
+              <button onClick={() => setDrawings([])} title="Clear All Drawings"
+                style={{ width: 28, height: 28, background: "transparent", border: "1px solid #ef444433", borderRadius: 5, cursor: "pointer", color: "#ef4444", border: "1px solid #ef444455", fontSize: 11 }}>
+                ✕
+              </button>
             </>
           )}
         </div>
       )}
+
       <style>{`@keyframes pulseLive{0%,100%{opacity:1}50%{opacity:.35}}`}</style>
     </div>
   );
