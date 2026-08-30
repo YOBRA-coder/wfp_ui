@@ -40,8 +40,11 @@ export default function Education({ api }) {
   // ── Quiz grading for the active lesson ──
   const lessonQuiz = active?.lessons?.[active.idx]?.quiz || [];
   const allAnswered = lessonQuiz.length > 0 && lessonQuiz.every((_, i) => quizAnswers[i] != null);
-  const correctCount = lessonQuiz.reduce((n, q, i) => n + (quizAnswers[i] === q.answer ? 1 : 0), 0);
-  const lessonScorePct = lessonQuiz.length ? Math.round((correctCount / lessonQuiz.length) * 100) : 100;
+  const safeLessonQuiz = Array.isArray(lessonQuiz) ? lessonQuiz : [];
+
+const correctCount = safeLessonQuiz.reduce((n, q, i) => 
+  n + (quizAnswers?.[i] === q?.answer ? 1 : 0), 
+0);  const lessonScorePct = lessonQuiz.length ? Math.round((correctCount / lessonQuiz.length) * 100) : 100;
 
   const goNext = () => {
     const { course, lessons, idx } = active;
