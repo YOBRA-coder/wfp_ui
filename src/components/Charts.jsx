@@ -214,10 +214,7 @@ export default function CandleChart1({
   const dragStartRef = useRef(null);
   const storageKey = `yobbyfx_drawings_${drawingKey || resetKey || pair}`;
   const [tool, setTool] = useState("none"); // "none" | "rect"
-  const [rects, setRects] = useState([]);
-  const [drawingRect, setDrawingRect] = useState(null); // in-progress rectangle
-  const rectsRef = useRef(rects); rectsRef.current = rects;
-  const drawingRectRef = useRef(drawingRect); drawingRectRef.current = drawingRect;
+
 
   const hydratedRef = useRef(false); // true once we know we have the real (server-confirmed) rect set — guards against echoing a stale local cache back over the server's copy
     // Supported types: "none" | "horizontal" | "vertical" | "trend" | "rect"
