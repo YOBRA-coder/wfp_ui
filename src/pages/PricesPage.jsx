@@ -664,7 +664,7 @@ export default function PricesPage({ api }) {
         <ChartWrap>
           <div style={{ position: "relative" }}>
             {/* Notice the opacity background change so it doesn't create a pitch-black flicker */}
-            {(busy || !bars.length) && (
+            {(!bars.length) && (
               <div style={{
                 position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 10,
