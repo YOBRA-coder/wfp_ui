@@ -229,6 +229,7 @@ export default function CandleChart1({
   // are the source of truth — localStorage is only the offline/instant-paint
   // fallback, and gets overwritten by whatever the server returns.
   // Sync / Load drawings
+   // Charts.jsx — Adjust the data hydration effect block
   useEffect(() => {
     if (!enableDrawing) { setDrawings([]); return; }
     hydratedRef.current = !api;
@@ -238,24 +239,51 @@ export default function CandleChart1({
     } catch { setDrawings([]); }
     setTool("none");
     setActivePreview(null);
+    
     if (api && pair && timeframe) {
       api.get(`/prefs/drawings?pair=${encodeURIComponent(pair)}&timeframe=${encodeURIComponent(timeframe)}`)
         .then((res) => {
-          if (Array.isArray(res?.drawings)) setDrawings(res.drawings);
+          // CRITICAL FIX: Read the backend's "rects" key and safely map it back to local multi-tool state
+          if (Array.isArray(res?.rects)) {
+            setDrawings(res.rects);
+          } else if (Array.isArray(res?.drawings)) {
+            setDrawings(res.drawings);
+          }
           hydratedRef.current = true;
         })
-        .catch(() => { hydratedRef.current = true; });
+        .catch(() => { 
+          hydratedRef.current = true; 
+        });
     }
+    return () => {};
   }, [storageKey, enableDrawing, api, pair, timeframe]);
 
+
   // Save changes
+  // Charts.jsx — Keep localStorage updated with drawings, but translate payload for the backend API
   useEffect(() => {
     if (!enableDrawing) return;
-    try { localStorage.setItem(storageKey, JSON.stringify(drawings)); } catch {}
+    
+    // 1. Always keep local layout instant, fast, and offline-safe
+    try { 
+      localStorage.setItem(storageKey, JSON.stringify(drawings)); 
+    } catch (e) {
+      console.error("Local storage error:", e);
+    }
+    
+    // 2. CRITICAL FIX: Translate the data shape to stop the FastAPI 422 (Unprocessable Entity) error!
+    // The backend expects an object parameter explicitly named "rects" containing the tracking elements.
     if (api && pair && timeframe && hydratedRef.current) {
-      api.put("/prefs/drawings", { pair, timeframe, drawings }).catch(() => {});
+      api.put("/prefs/drawings", { 
+        pair, 
+        timeframe, 
+        rects: drawings // Map your multi-tool drawings directly into the backend "rects" field expectation
+      })
+      .then(() => console.log("✨ All drawing lines synced successfully."))
+      .catch((err) => console.error("Sync failed:", err));
     }
   }, [drawings, storageKey, enableDrawing, api, pair, timeframe]);
+
 
   // ── Multi-Drawing Engine Canvas Renderer ──
   const redrawAllTools = useCallback(() => {
@@ -684,9 +712,7 @@ export default function CandleChart1({
     }
       lastBarTimeRef.current = t;
     } catch { 
-      if (bars && bars.length > 0) {
-      lastBarTimeRef.current = bars[bars.length - 1].time;
-    } }
+    }
   }, [liveCandle]);
 
   const utcHour = new Date().getUTCHours();
