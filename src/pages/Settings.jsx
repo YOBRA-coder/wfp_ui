@@ -82,7 +82,7 @@ export default function Settings({ api, user, setUser }) {
   };
 
   return (
-    <div style={{ padding: mobile ? 12 : 20, maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ padding: mobile ? 12 : 20, marginBottom: 100, maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionTitle>Settings</SectionTitle>
 
       {!user?.email_verified && (

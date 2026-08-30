@@ -50,7 +50,7 @@ export default function Dashboard({ api }) {
     };
 
     return (
-        <div style={{ padding: mobile ? 12 : 20, maxWidth: "100%", boxSizing: "border-box" }}>
+        <div style={{ padding: mobile ? 12 : 20, maxWidth: "100%", marginBottom: 100, boxSizing: "border-box" }}>
 
             {/* ── Account overview ── */}
             {stats && (
