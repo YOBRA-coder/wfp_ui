@@ -200,7 +200,7 @@ const correctCount = safeLessonQuiz.reduce((n, q, i) =>
   const categories = Array.from(new Set(courses.map((c) => c.category))).filter(Boolean);
 
   return (
-   <div style={{ padding: mobile ? 12 : 20, marginBottom: 30, maxWidth: "100%", boxSizing: "border-box" }}>
+   <div style={{ padding: mobile ? 12 : 20, marginBottom: 70, maxWidth: "100%", boxSizing: "border-box" }}>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 14 }}>
         <div>
