@@ -659,7 +659,8 @@ export default function CandleChart1({
       chart.timeScale().fitContent();
       try { visibleRangeRef.current = chart.timeScale().getVisibleLogicalRange() || true; } catch { visibleRangeRef.current = true; }
     }
-    redrawRects();
+    redrawAllTools();
+    
   }, [bars, markers, supportResistance, trendline, trades, selectedTradeId, entry, sl, tp, indicators.sr, draggableSlTp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Live tick / candle-close updates — no chart rebuild, just series.update() ──
