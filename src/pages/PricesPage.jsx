@@ -58,7 +58,7 @@ export default function PricesPage({ api }) {
   const loadChartRef = useRef(null);
   const mobile = useMobile();
   const copyTradeId = searchParams.get('copyTradeId');
-  const [selectedTradeId,setSelectedTradeId]=useState(copyTradeId || null);
+  const [selectedTradeId, setSelectedTradeId] = useState(copyTradeId || null);
 
   // Deep link from Dashboard: /prices?pair=EURUSD&copyTradeId=44 — show that trade's progress
   //const [copyTradeId, setCopyTradeId] = useState(() => searchParams.get("copyTradeId") || null);
@@ -81,12 +81,12 @@ export default function PricesPage({ api }) {
         setAdjSl(String(t.stop_loss ?? ""));
         setAdjTp(String(t.take_profit ?? ""));
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }, [selectedTradeId, api]);
 
-    // add all trades of the current pairs that are still active shown here in chart from the load of my trades
+  // add all trades of the current pairs that are still active shown here in chart from the load of my trades
   const load = useCallback(() => {
-    api.get("/copy/my-trades").then(d => { setTrades(d.trades || []); }).catch(() => {});
+    api.get("/copy/my-trades").then(d => { setTrades(d.trades || []); }).catch(() => { });
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
@@ -169,7 +169,7 @@ export default function PricesPage({ api }) {
     setPrices([]); // stale entries from the previous watchlist shouldn't linger
     api.get("/prices/live?pairs=" + watchlistPairs.join(","))
       .then((d) => setPrices(d.prices || []))
-      .catch(() => {});
+      .catch(() => { });
   }, [api, watchlistPairs.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // (timeframe/indicator changes now persist via setSelTf/setInd → useSyncedMarketPrefs, no separate effect needed)
@@ -182,7 +182,6 @@ export default function PricesPage({ api }) {
     setMarkers([]);
     setSr([]);
     setTrendline(null);
-    setLiveCandle(null);
   }, [selP, selTf]);
 
   // ── Chart data (REST — full bar history + annotations) ──
@@ -210,10 +209,13 @@ export default function PricesPage({ api }) {
     if (d?.type === "candle_update" && d.candle) {
       setLiveCandle(d.candle);
     } else if (d?.type === "candle_closed") {
-      // A new bar formed — pull the fresh bar set + recomputed markers/S-R/trendline.
-      loadChartRef.current && loadChartRef.current();
+      // Fresh closed bar formed — pull fresh history set safely
+      if (loadChartRef.current) {
+        loadChartRef.current();
+      }
     }
   }, []);
+
   const candleStatus = useLiveSocket(candleWsUrl, onCandleMsg);
 
   const placeQuickTrade = async (direction) => {
@@ -463,29 +465,29 @@ export default function PricesPage({ api }) {
             gap: 12,
           }}
         >
-        
-            <div>
-              <div
-                style={{
-                  fontSize: 26,
-                  fontWeight: 800,
-                  color: "#fff",
-                }}
-              >
-                {selP} <Badge col={C.gold}>{activeTrades.length} active trades</Badge> <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>· {pairDecimals(selP)}dp</span>
-              </div>
 
-              <div
-                style={{
-                  color: "#94a3b8",
-                  marginTop: 4,
-                  fontSize: 13,
-                }}
-              >
-                EMA20 · EMA50 · Bollinger Bands · S/R · Trendline · Volume
-              </div>
+          <div>
+            <div
+              style={{
+                fontSize: 26,
+                fontWeight: 800,
+                color: "#fff",
+              }}
+            >
+              {selP} <Badge col={C.gold}>{activeTrades.length} active trades</Badge> <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>· {pairDecimals(selP)}dp</span>
             </div>
-        
+
+            <div
+              style={{
+                color: "#94a3b8",
+                marginTop: 4,
+                fontSize: 13,
+              }}
+            >
+              EMA20 · EMA50 · Bollinger Bands · S/R · Trendline · Volume
+            </div>
+          </div>
+
 
           <div
             style={{
@@ -569,8 +571,10 @@ export default function PricesPage({ api }) {
         </div>
 
         {selectedTradeId && (
-          <div style={{ background: `${C.gold}14`, border: `1px solid ${C.gold}40`, borderRadius: 8,
-                        padding: 12, marginBottom: 16, fontSize: 12 }}>
+          <div style={{
+            background: `${C.gold}14`, border: `1px solid ${C.gold}40`, borderRadius: 8,
+            padding: 12, marginBottom: 16, fontSize: 12
+          }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
                 Tracking copy trade #{copyTrade.id} — {copyTrade.pair} {copyTrade.direction} · {(copyTrade.status || "").toUpperCase()}
@@ -659,11 +663,13 @@ export default function PricesPage({ api }) {
         {/* Chart */}
         <ChartWrap>
           <div style={{ position: "relative" }}>
-            {(!bars.length) && (
+            {/* Notice the opacity background change so it doesn't create a pitch-black flicker */}
+            {(busy || !bars.length) && (
               <div style={{
                 position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 10,
-                background: "rgba(7,16,24,0.72)", borderRadius: 18,
+                background: "rgba(11, 23, 35, 0.6)", borderRadius: 18, // Match your card background color instead of absolute black (#071018)
+                backdropFilter: "blur(2px)" // Soft blur looks cleaner than a disappearing component
               }}>
                 <div style={{
                   width: 30, height: 30, borderRadius: "50%",
@@ -671,39 +677,38 @@ export default function PricesPage({ api }) {
                   animation: "spin 0.8s linear infinite",
                 }} />
                 <span style={{ fontSize: 11, color: "#94a3b8" }}>Loading {selP} · {selTf}…</span>
-                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
               </div>
             )}
             <CandleChart1
-            bars={bars}
-            resetKey={`${selP}_${selTf}`}
-            pair={selP}
-            timeframe={selTf}
-            api={api}
-            onTfClick={() => setTfPickerOpen(true)}
-            height={mobile ? 380 : 560}
-            entry={copyTrade?.entry_price}
-            sl={copyTrade?.stop_loss}
-            tp={copyTrade?.take_profit}
-            markers={markers}
-            supportResistance={sr}
-            trendline={trendline}
-            liveCandle={liveCandle}
-            live={candleStatus === "open"}
-            indicators={ind}
-            draggableSlTp={!!copyTrade && copyTrade.status === "open"}
-            onAdjustSlTp={adjustCopyTradeFromChart}
-            trades={activeTrades}
-            selectedTradeId={selectedTradeId}
-            onTradeSelect={(trade)=> {
-              setCopyTrade(trade);
-              setSelectedTradeId(trade.id);
-              setAdjSl(String(trade.stop_loss ?? ""));
-              setAdjTp(String(trade.take_profit ?? ""));
-            }
+              bars={bars}
+              resetKey={`${selP}_${selTf}`}
+              pair={selP}
+              timeframe={selTf}
+              api={api}
+              onTfClick={() => setTfPickerOpen(true)}
+              height={mobile ? 380 : 560}
+              entry={copyTrade?.entry_price}
+              sl={copyTrade?.stop_loss}
+              tp={copyTrade?.take_profit}
+              markers={markers}
+              supportResistance={sr}
+              trendline={trendline}
+              liveCandle={liveCandle}
+              live={candleStatus === "open"}
+              indicators={ind}
+              draggableSlTp={!!copyTrade && copyTrade.status === "open"}
+              onAdjustSlTp={adjustCopyTradeFromChart}
+              trades={activeTrades}
+              selectedTradeId={selectedTradeId}
+              onTradeSelect={(trade) => {
+                setCopyTrade(trade);
+                setSelectedTradeId(trade.id);
+                setAdjSl(String(trade.stop_loss ?? ""));
+                setAdjTp(String(trade.take_profit ?? ""));
+              }
 
-          }
-          />
+              }
+            />
           </div>
         </ChartWrap>
       </Card>
