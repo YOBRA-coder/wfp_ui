@@ -150,7 +150,7 @@ function getSessionsMetrics(utcHour) {
   });
 }
 
-export function CandleChart1({
+export default function CandleChart1({
   bars = [],
   entry, sl, tp,
   markers = [],
@@ -195,6 +195,7 @@ export function CandleChart1({
   // ── Advanced Drawing Board Module ──
   const canvasRef = useRef(null);
   const dragStartRef = useRef(null);
+  const slTpDragRef = useRef(null); // in-progress SL/TP price-line drag: { type: "sl"|"tp", livePrice }
   const storageKey = `yobbyfx_drawings_${drawingKey || resetKey || pair}`;
   
   const [tool, setTool] = useState("none"); 
@@ -357,9 +358,34 @@ export function CandleChart1({
     return null;
   }
 
+  const SLTP_TOLERANCE_PX = 10;
+  function findSlTpHit(cy) {
+    if (!draggableSlTp) return null;
+    const series = candleSeriesRef.current;
+    if (!series) return null;
+    if (sl != null) {
+      const y = series.priceToCoordinate(Number(sl));
+      if (y != null && Math.abs(y - cy) <= SLTP_TOLERANCE_PX) return "sl";
+    }
+    if (tp != null) {
+      const y = series.priceToCoordinate(Number(tp));
+      if (y != null && Math.abs(y - cy) <= SLTP_TOLERANCE_PX) return "tp";
+    }
+    return null;
+  }
+
   const handleDrawStart = (e) => {
     const pt = getCanvasCoords(e);
     if (!pt) return;
+
+    // SL/TP line drag takes priority over drawing tools, and works no
+    // matter which drawing tool (if any) happens to be selected.
+    const slTpHit = findSlTpHit(pt.cy);
+    if (slTpHit) {
+      e.preventDefault();
+      slTpDragRef.current = { type: slTpHit, livePrice: Number(slTpHit === "sl" ? sl : tp) };
+      return;
+    }
 
     if (tool === "select" || tool === "none") {
       const clicked = findDrawingNear(pt.cx, pt.cy);
@@ -370,6 +396,22 @@ export function CandleChart1({
         moveOffsetRef.current = { type: clicked.type, baseT: pt.t, baseP: pt.p, d: { ...clicked } };
       } else {
         setSelectedDrawingId(null);
+        // Nothing to draw/select/drag here — fall back to the same
+        // "did they click a trade's entry line" hit-test the chart's own
+        // click handler does, since this overlay sits above the chart and
+        // would otherwise swallow the click before the chart ever sees it.
+        const series = candleSeriesRef.current;
+        if (series && (tradesRef.current || []).length) {
+          const HIT_PX = 10;
+          let closest = null, closestDist = Infinity;
+          tradesRef.current.forEach((t) => {
+            const y = series.priceToCoordinate(Number(t.entry_price));
+            if (y == null) return;
+            const dist = Math.abs(y - pt.cy);
+            if (dist <= HIT_PX && dist < closestDist) { closest = t; closestDist = dist; }
+          });
+          if (closest) onTradeSelectRef.current?.(closest);
+        }
       }
       return;
     }
@@ -389,6 +431,15 @@ export function CandleChart1({
   const handleDrawMove = (e) => {
     const pt = getCanvasCoords(e);
     if (!pt) return;
+
+    if (slTpDragRef.current) {
+      e.preventDefault();
+      const price = Number(pt.p.toFixed(decimals));
+      const lineRef = slTpDragRef.current.type === "sl" ? slLineRef : tpLineRef;
+      if (lineRef.current) { try { lineRef.current.applyOptions({ price }); } catch {} }
+      slTpDragRef.current.livePrice = price;
+      return;
+    }
 
     if (isMoving && moveOffsetRef.current) {
       e.preventDefault();
@@ -428,6 +479,13 @@ export function CandleChart1({
   };
 
   const handleDrawEnd = (e) => {
+    if (slTpDragRef.current) {
+      const { type, livePrice } = slTpDragRef.current;
+      slTpDragRef.current = null;
+      if (livePrice != null) onAdjustSlTp?.(type, livePrice);
+      return;
+    }
+
     if (isMoving) {
       setIsMoving(false);
       moveOffsetRef.current = null;
@@ -613,11 +671,22 @@ export function CandleChart1({
 
     priceLinesRef.current.forEach((pl) => { try { candleSeries.removePriceLine(pl); } catch {} });
     priceLinesRef.current = [];
+    slLineRef.current = null;
+    tpLineRef.current = null;
 
-    if (!trades.length) {
-      if (entry) priceLinesRef.current.push(candleSeries.createPriceLine({ price: Number(entry), color: "#f0b429", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" }));
-      if (sl) priceLinesRef.current.push(candleSeries.createPriceLine({ price: Number(sl), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "SL" }));
-      if (tp) priceLinesRef.current.push(candleSeries.createPriceLine({ price: Number(tp), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "TP" }));
+    // Entry line only when there's no separate per-trade list already
+    // drawing its own entry lines below, to avoid a duplicate overlapping
+    // line for the same trade. SL/TP always render when provided — these
+    // used to be hidden whenever any trade was open, which is exactly when
+    // you'd want to see (and drag) them.
+    if (entry && !trades.length) priceLinesRef.current.push(candleSeries.createPriceLine({ price: Number(entry), color: "#f0b429", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" }));
+    if (sl) {
+      slLineRef.current = candleSeries.createPriceLine({ price: Number(sl), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
+      priceLinesRef.current.push(slLineRef.current);
+    }
+    if (tp) {
+      tpLineRef.current = candleSeries.createPriceLine({ price: Number(tp), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
+      priceLinesRef.current.push(tpLineRef.current);
     }
 
     trades.forEach((t) => {
@@ -659,7 +728,19 @@ export function CandleChart1({
       <div style={{ position: "absolute", top: 8, left: 10, right: 10, zIndex: 10, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, pointerEvents: "none" }}>
         <div style={{ display: "flex", gap: 6, background: "rgba(7,16,24,0.85)", border: "1px solid #1e293b", borderRadius: 8, padding: "4px 8px", pointerEvents: "auto", flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{pair}</span>
-          {timeframe && <span style={{ fontSize: 11, fontWeight: 700, color: C.gold, background: `${C.gold}1a`, border: `1px solid ${C.gold}33`, borderRadius: 5, padding: "1px 6px" }}>{timeframe}</span>}
+          {timeframe && (
+            <span
+              onClick={() => onTfClick && onTfClick()}
+              title={onTfClick ? "Tap to change timeframe" : undefined}
+              style={{
+                fontSize: 11, fontWeight: 700, color: C.gold, background: `${C.gold}1a`,
+                border: `1px solid ${C.gold}33`, borderRadius: 5, padding: "1px 6px",
+                cursor: onTfClick ? "pointer" : "default", display: "inline-flex", alignItems: "center", gap: 3,
+              }}
+            >
+              {timeframe}{onTfClick && <span style={{ fontSize: 8, opacity: 0.8 }}>▼</span>}
+            </span>
+          )}
           {hover && (
             <span style={{ fontSize: 10, color: "#94a3b8", display: "flex", gap: 5 }}>
               <span>O<b style={{ color: "#cbd5e1" }}>{fp(hover.o, decimals)}</b></span>
@@ -701,7 +782,7 @@ export function CandleChart1({
             style={{
               position: "absolute", left: 0, top: 0, width: "100%", height: "100%",
               zIndex: 5, cursor: tool !== "none" ? "crosshair" : "default",
-              pointerEvents: tool !== "none" || selectedDrawingId ? "auto" : "none", touchAction: "none"
+              pointerEvents: (tool !== "none" || selectedDrawingId || drawings.length > 0 || draggableSlTp) ? "auto" : "none", touchAction: "none"
             }}
           />
         )}

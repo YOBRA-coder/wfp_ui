@@ -3,19 +3,18 @@ import { C } from "../utils/constants.jsx";
 import { useEffect, useState } from "react";
 
 // ─── Responsive Hook ─────────────────────────────────────────────────────────
-const useMobile = (bp = 768) => {
-  const [mobile, setMobile] = useState(window.innerWidth < bp);
-
+export function useMobile(breakpoint = 768) {
+  const [mobile, setMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(`(max-width: ${breakpoint}px)`).matches
+  );
   useEffect(() => {
-    const onResize = () => setMobile(window.innerWidth < bp);
-
-    window.addEventListener("resize", onResize);
-
-    return () => window.removeEventListener("resize", onResize);
-  }, [bp]);
-
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = (e) => setMobile(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
   return mobile;
-};
+}
 
 // ─── Card ────────────────────────────────────────────────────────────────────
 const Card = ({ children, style = {} }) => {
