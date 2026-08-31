@@ -150,7 +150,7 @@ function getSessionsMetrics(utcHour) {
   });
 }
 
-export default function CandleChart1({
+export function CandleChart1({
   bars = [],
   entry, sl, tp,
   markers = [],
