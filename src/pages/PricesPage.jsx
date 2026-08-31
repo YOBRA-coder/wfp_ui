@@ -110,6 +110,12 @@ export default function PricesPage({ api }) {
   // list active copy trades of the current pairs active selected by user
   const activeTrades = trades.filter(t => t.status === "open" && t.pair === selP);
   const allOpenTrades = trades.filter(t => t.status === "open");
+  const selectTrade = useCallback((trade) => {
+    setCopyTrade(trade);
+    setSelectedTradeId(trade.id);
+    setAdjSl(String(trade.stop_loss ?? ""));
+    setAdjTp(String(trade.take_profit ?? ""));
+  }, []);
   const [watchlistFilter, setWatchlistFilter] = useState("all"); // "all" | "active" — Live Markets panel toggle
 
   useEffect(() => {
@@ -652,6 +658,34 @@ export default function PricesPage({ api }) {
           </div>
         )}
 
+        {/* Active trades on this pair — click one to track it and show its SL/TP on the chart for drag-to-adjust */}
+        {activeTrades.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {activeTrades.map((t) => {
+              const isSel = t.id === selectedTradeId;
+              const up = t.direction === "BUY";
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => selectTrade(t)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+                    padding: "6px 12px", borderRadius: 999,
+                    background: isSel ? `${C.gold}1f` : "#0f172a",
+                    border: `1px solid ${isSel ? C.gold : "#1e293b"}`,
+                    color: "#e2e8f0", fontSize: 12,
+                  }}
+                >
+                  <span style={{ color: up ? C.green : C.red, fontWeight: 800 }}>{up ? "▲" : "▼"} {t.direction}</span>
+                  <span style={{ color: "#64748b" }}>{t.lot_size} lot</span>
+                  <span style={{ fontFamily: "monospace" }}>{fp(t.entry_price, pairDecimals(t.pair))}</span>
+                  {isSel && <span style={{ fontSize: 10, color: C.gold, fontWeight: 700 }}>· tracking ⇕</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Indicator toggles */}
         <div
           style={{
@@ -710,14 +744,7 @@ export default function PricesPage({ api }) {
               onAdjustSlTp={adjustCopyTradeFromChart}
               trades={activeTrades}
               selectedTradeId={selectedTradeId}
-              onTradeSelect={(trade) => {
-                setCopyTrade(trade);
-                setSelectedTradeId(trade.id);
-                setAdjSl(String(trade.stop_loss ?? ""));
-                setAdjTp(String(trade.take_profit ?? ""));
-              }
-
-              }
+              onTradeSelect={selectTrade}
             />
           </div>
         </ChartWrap>
