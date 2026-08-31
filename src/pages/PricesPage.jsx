@@ -56,7 +56,16 @@ export default function PricesPage({ api }) {
   const [tradeErr, setTradeErr] = useState("");
   const [copyTrade, setCopyTrade] = useState(null); // the specific trade Dashboard linked here to show progress for
   const loadChartRef = useRef(null);
-  const mobile = useMobile();
+  const mobileRaw = useMobile();
+  // Guards against the Live Markets panel flickering: if useMobile() flips
+  // rapidly (e.g. a resize-driven layout feedback loop), only commit the
+  // change after it's held steady for 150ms instead of unmounting/remounting
+  // the panel on every flip.
+  const [mobile, setMobile] = useState(mobileRaw);
+  useEffect(() => {
+    const t = setTimeout(() => setMobile(mobileRaw), 150);
+    return () => clearTimeout(t);
+  }, [mobileRaw]);
   const copyTradeId = searchParams.get('copyTradeId');
   const [selectedTradeId, setSelectedTradeId] = useState(copyTradeId || null);
 
@@ -663,21 +672,21 @@ export default function PricesPage({ api }) {
         {/* Chart */}
         <ChartWrap>
           <div style={{ position: "relative" }}>
-            {/* Use the busy flag from your REST client to show loading state instead of checking !bars.length */}
+            {/* Small corner pill only — never covers or blurs the chart/prices underneath,
+                so the data stays visible and still while it refreshes. */}
             {busy && (
               <div style={{
-                position: "absolute", inset: 0, zIndex: 10, display: "flex", flexDirection: "column",
-                alignItems: "center", justifyContent: "center", gap: 10,
-                background: "rgba(11, 23, 35, 0.4)", // Translucent tinted shade matching card background
-                backdropFilter: "blur(1px)", // Very gentle blur allows price to remain readable underneath
-                borderRadius: 18,
+                position: "absolute", top: 10, right: 10, zIndex: 10, display: "flex",
+                alignItems: "center", gap: 6,
+                background: "rgba(7,16,24,0.9)", border: `1px solid ${C.border}`,
+                borderRadius: 999, padding: "5px 10px",
               }}>
                 <div style={{
-                  width: 30, height: 30, borderRadius: "50%",
-                  border: `3px solid ${C.border}`, borderTopColor: C.gold,
+                  width: 11, height: 11, borderRadius: "50%",
+                  border: `2px solid ${C.border}`, borderTopColor: C.gold,
                   animation: "spin 0.8s linear infinite",
                 }} />
-                <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>Refreshing {selP} · {selTf}…</span>
+                <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>Updating…</span>
               </div>
             )}
             <CandleChart1

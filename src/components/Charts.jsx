@@ -394,21 +394,29 @@ export default function CandleChart1({
       e.preventDefault();
       const offset = moveOffsetRef.current;
       const deltaP = pt.p - offset.baseP;
-      
+      const deltaT = pt.t - offset.baseT;
+
       setDrawings(prev => prev.map(item => {
         if (item.id !== offset.d.id) return item;
         if (item.type === "horizontal") {
           return { ...item, p1: offset.d.p1 + deltaP, p2: offset.d.p2 + deltaP };
         }
         if (item.type === "vertical") {
-          return { ...item, t1: pt.t, t2: pt.t };
+          const origT1 = typeof offset.d.t1 === "number" ? offset.d.t1 : toUnixTime(offset.d.t1);
+          const newT = origT1 + deltaT;
+          return { ...item, t1: newT, t2: newT };
         }
-        return { 
-          ...item, 
-          t1: item.t1 === offset.d.t1 ? pt.t : item.t1,
+        // trend / rect — translate BOTH endpoints by the same delta so the
+        // whole shape slides as one piece instead of one end stretching
+        // toward the cursor while the other stays frozen.
+        const origT1 = typeof offset.d.t1 === "number" ? offset.d.t1 : toUnixTime(offset.d.t1);
+        const origT2 = typeof offset.d.t2 === "number" ? offset.d.t2 : toUnixTime(offset.d.t2);
+        return {
+          ...item,
+          t1: origT1 + deltaT,
+          t2: origT2 + deltaT,
           p1: offset.d.p1 + deltaP,
-          t2: pt.t,
-          p2: offset.d.p2 + deltaP
+          p2: offset.d.p2 + deltaP,
         };
       }));
       return;
@@ -475,23 +483,9 @@ export default function CandleChart1({
       priceLineVisible: true, priceFormat: { type: "price", precision: decimals, minMove: Math.pow(10, -decimals) },
     });
     candleSeriesRef.current = candleSeries;
-
-    if (indicators.ema) {
-      ema20Ref.current = chart.addSeries(LineSeries, { color: "#facc15", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA20" });
-      ema50Ref.current = chart.addSeries(LineSeries, { color: "#a855f7", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA50" });
-    }
-    if (indicators.bb) {
-      bbUpRef.current  = chart.addSeries(LineSeries, { color: "#60a5fa", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
-      bbLowRef.current = chart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
-    }
-    if (indicators.volume) {
-      const v = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol", color: "#3d9eff55" });
-      v.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-      volRef.current = v;
-    }
-    if (indicators.trendline) {
-      trendRef.current = chart.addSeries(LineSeries, { color: "#22c55e", lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    }
+    // Indicator series (EMA/BB/Volume/Trendline) are added/removed by the
+    // effect below, right after this chart exists — that keeps toggling an
+    // indicator from tearing down and rebuilding the whole chart.
 
     chart.subscribeClick((param) => {
       if (!param.point || tool !== "none") return;
@@ -524,10 +518,62 @@ export default function CandleChart1({
 
     return () => {
       window.removeEventListener("resize", resize);
+      // The indicator series belong to this chart instance and are being
+      // destroyed along with it — clear the refs so the effect below knows
+      // to re-add them fresh on the next chart.
+      ema20Ref.current = null; ema50Ref.current = null;
+      bbUpRef.current = null; bbLowRef.current = null;
+      volRef.current = null; trendRef.current = null;
       chart.remove();
       chartRef.current = null;
     };
-  }, [resetKey, indicators.ema, indicators.bb, indicators.volume, indicators.trendline, decimals]);
+  }, [resetKey, decimals]);
+
+  // ── Indicator series — add/remove on the existing chart when a toggle is
+  // clicked, instead of rebuilding the whole chart (which caused the visible
+  // double-chart flash and jitter). Also reruns after resetKey rebuilds the
+  // chart, to re-add whichever indicators are currently on.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    if (indicators.ema && !ema20Ref.current) {
+      ema20Ref.current = chart.addSeries(LineSeries, { color: "#facc15", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA20" });
+      ema50Ref.current = chart.addSeries(LineSeries, { color: "#a855f7", lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "EMA50" });
+      ema20Ref.current.setData(barsRef.current.filter((b) => b.ema20 != null).map((b) => ({ time: b.time, value: Number(b.ema20) })));
+      ema50Ref.current.setData(barsRef.current.filter((b) => b.ema50 != null).map((b) => ({ time: b.time, value: Number(b.ema50) })));
+    } else if (!indicators.ema && ema20Ref.current) {
+      try { chart.removeSeries(ema20Ref.current); chart.removeSeries(ema50Ref.current); } catch {}
+      ema20Ref.current = null; ema50Ref.current = null;
+    }
+
+    if (indicators.bb && !bbUpRef.current) {
+      bbUpRef.current  = chart.addSeries(LineSeries, { color: "#60a5fa", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
+      bbLowRef.current = chart.addSeries(LineSeries, { color: "#3b82f6", lineWidth: 1, lineStyle: 2, priceLineVisible: false });
+      bbUpRef.current.setData(barsRef.current.filter((b) => (b.bb_upper ?? b.bb_up) != null).map((b) => ({ time: b.time, value: Number(b.bb_upper ?? b.bb_up) })));
+      bbLowRef.current.setData(barsRef.current.filter((b) => (b.bb_lower ?? b.bb_low) != null).map((b) => ({ time: b.time, value: Number(b.bb_lower ?? b.bb_low) })));
+    } else if (!indicators.bb && bbUpRef.current) {
+      try { chart.removeSeries(bbUpRef.current); chart.removeSeries(bbLowRef.current); } catch {}
+      bbUpRef.current = null; bbLowRef.current = null;
+    }
+
+    if (indicators.volume && !volRef.current) {
+      const v = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol", color: "#3d9eff55" });
+      v.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+      v.setData(barsRef.current.map((b) => ({ time: b.time, value: Number(b.volume) || 0, color: Number(b.close) >= Number(b.open) ? "#22c55e55" : "#ef444455" })));
+      volRef.current = v;
+    } else if (!indicators.volume && volRef.current) {
+      try { chart.removeSeries(volRef.current); } catch {}
+      volRef.current = null;
+    }
+
+    if (indicators.trendline && !trendRef.current) {
+      trendRef.current = chart.addSeries(LineSeries, { color: "#22c55e", lineWidth: 2, lineStyle: 0, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    } else if (!indicators.trendline && trendRef.current) {
+      try { chart.removeSeries(trendRef.current); } catch {}
+      trendRef.current = null;
+    }
+  }, [indicators.ema, indicators.bb, indicators.volume, indicators.trendline, resetKey]);
 
   // Data mapping updates hook
   useEffect(() => {
@@ -596,8 +642,10 @@ export default function CandleChart1({
     const t = typeof liveCandle.time === "number" ? liveCandle.time : toUnixTime(liveCandle.time);
     if (t == null) return;
     try {
+      // Just push the tick into the series. The price scale already autoscales
+      // on data changes by default — re-forcing autoScale:true on every single
+      // tick (multiple times a second) was what made the whole chart jitter.
       candleSeriesRef.current.update({ time: t, open: Number(liveCandle.open), high: Number(liveCandle.high), low: Number(liveCandle.low), close: Number(liveCandle.close) });
-      if (chartRef.current) { chartRef.current.priceScale('right').applyOptions({ autoScale: true }); }
     } catch {}
   }, [liveCandle]);
 
@@ -721,33 +769,62 @@ export function SigCard({ s, selected, onClick }) {
   const buy = s.direction === "BUY";
   const dc  = buy ? C.green : C.red;
   const sc  = { STRONG: C.green, MODERATE: C.gold, WEAK: "#f97316", AVOID: C.red }[s.strength] || C.muted;
+  const isOpen = s.status !== "closed";
 
   return (
-    <div onClick={onClick} style={{
-      background: selected ? C.surf2 : C.surf,
-      border: `1px solid ${selected ? C.gold : C.border}`,
-      borderLeft: `3px solid ${dc}`,
-      borderRadius: 9, padding: 13, marginBottom: 8, cursor: "pointer", transition: "all .15s",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 16, fontWeight: 800 }}>{s.pair}</span>
-          <Badge col={dc}>{s.direction}</Badge>
+    <div
+      className="sig-card"
+      onClick={onClick}
+      style={{
+        position: "relative",
+        background: selected
+          ? `linear-gradient(135deg, ${C.gold}14, ${C.surf2})`
+          : C.surf,
+        border: `1px solid ${selected ? C.gold : C.border}`,
+        borderLeft: `3px solid ${dc}`,
+        borderRadius: 12,
+        padding: "14px 15px",
+        marginBottom: 9,
+        cursor: "pointer",
+        boxShadow: selected ? `0 6px 20px ${C.gold}1f` : "0 1px 0 rgba(0,0,0,0.2)",
+      }}
+    >
+      <style>{`
+        .sig-card { transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+        .sig-card:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0,0,0,0.35); }
+      `}</style>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: 0.2 }}>{s.pair}</span>
+          <Badge col={dc}>{buy ? "▲ BUY" : "▼ SELL"}</Badge>
           <Badge col={C.muted}>{s.timeframe}</Badge>
+          {isOpen && (
+            <span title="Signal live / open" style={{
+              width: 6, height: 6, borderRadius: "50%", background: C.green,
+              boxShadow: `0 0 6px ${C.green}`,
+            }} />
+          )}
         </div>
         <ConfRing val={s.confidence} size={50} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, fontSize: 11 }}>
+
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, fontSize: 11,
+        background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`,
+        borderRadius: 8, padding: "8px 9px", marginBottom: 9,
+      }}>
         {[["ENTRY", fp(s.entry_price), C.text], ["SL", fp(s.stop_loss), C.red], ["TP", fp(s.take_profit), C.green],
           ["SL PIPS", f1(s.sl_pips), C.red], ["TP PIPS", f1(s.tp_pips), C.green], ["R:R", `1:${s.risk_reward}`, C.gold],
         ].map(([l, v, c]) => (
           <div key={l}>
-            <div style={{ fontSize: 9, color: C.muted, letterSpacing: 0.5, marginBottom: 2 }}>{l}</div>
+            <div style={{ fontSize: 9, color: C.muted, letterSpacing: 0.6, marginBottom: 2 }}>{l}</div>
             <div style={{ fontWeight: 700, fontFamily: "monospace", color: c }}>{v}</div>
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
         {s.status === "closed" ? (
           <Badge col={s.result === "win" ? C.green : s.result === "loss" ? C.red : C.muted}>
             {(s.result || "").toUpperCase()} {s.pnl_pips != null ? `${s.pnl_pips >= 0 ? "+" : ""}${f1(s.pnl_pips)}p` : ""}
@@ -758,7 +835,7 @@ export function SigCard({ s, selected, onClick }) {
         <Badge col={C.muted}>{s.candle_pattern || "—"}</Badge>
         <span style={{ marginLeft: "auto", fontSize: 10, color: C.muted }}>{ago(s.created_at)}</span>
       </div>
-      {s.entry_time && <div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>{s.entry_time}</div>}
+      {s.entry_time && <div style={{ fontSize: 10, color: C.muted, marginTop: 5 }}>{s.entry_time}</div>}
     </div>
   );
 }

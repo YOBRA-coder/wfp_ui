@@ -211,14 +211,25 @@ export default function Signals({ api }) {
     const buy = s.direction === "BUY";
     const dc  = buy ? C.green : C.red;
     return (
-      <Card>
+      <Card style={{
+        background: `linear-gradient(180deg, ${C.surf2} 0%, ${C.surf} 140px)`,
+        border: `1px solid ${C.border}`,
+      }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+        <div style={{
+          display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+          marginBottom: 16, paddingBottom: 14, borderBottom: `1px solid ${C.border}`,
+        }}>
           <div>
-            <div style={{ fontSize: 26, fontWeight: 800 }}>
-              {s.pair} <span style={{ color: dc }}>{s.direction}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 0.2 }}>{s.pair}</div>
+              <Badge col={dc}>{buy ? "▲ BUY" : "▼ SELL"}</Badge>
             </div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{s.timeframe} · {s.entry_time}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 5, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontWeight: 700, color: C.gold }}>{s.timeframe}</span>
+              <span style={{ opacity: 0.4 }}>·</span>
+              <span>{s.entry_time}</span>
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             {s.approval_status === "pending_review" ? (
@@ -273,9 +284,13 @@ export default function Signals({ api }) {
           {[["ENTRY", fp(s.entry_price), C.text], ["STOP LOSS", fp(s.stop_loss), C.red], ["TAKE PROFIT", fp(s.take_profit), C.green],
             ["SL PIPS", f1(s.sl_pips), C.red], ["TP PIPS", f1(s.tp_pips), C.green], ["R:R", `1:${s.risk_reward}`, C.gold],
           ].map(([l, v, c]) => (
-            <div key={l} style={{ background: C.surf2, border: `1px solid ${C.border}`, borderTop: `2px solid ${c}`, borderRadius: 8, padding: 10, textAlign: "center" }}>
-              <div style={{ fontSize: 9, color: C.muted, letterSpacing: 0.5, marginBottom: 3 }}>{l}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: c, fontFamily: "monospace" }}>{v}</div>
+            <div key={l} style={{
+              background: `linear-gradient(160deg, ${c}12, ${C.surf2})`,
+              border: `1px solid ${C.border}`, borderTop: `2px solid ${c}`,
+              borderRadius: 10, padding: "12px 10px", textAlign: "center",
+            }}>
+              <div style={{ fontSize: 9, color: C.muted, letterSpacing: 0.6, marginBottom: 4, fontWeight: 600 }}>{l}</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: c, fontFamily: "monospace" }}>{v}</div>
             </div>
           ))}
         </Grid>
