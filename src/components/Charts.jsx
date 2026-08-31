@@ -588,10 +588,17 @@ export default function CandleChart1({
   // whenever the bar set (or overlays) changes but never rebuilds the chart —
   // this is what keeps pan/zoom exactly where the user left it when a new
   // candle arrives. ──
-  useEffect(() => {
-    const candleSeries = candleSeriesRef.current;
-    if (!candleSeries || !bars || bars.length === 0) return;
+// Charts.jsx — Overwrite this specific Effect block
+useEffect(() => {
+  const candleSeries = candleSeriesRef.current;
+  
+  // FIX: If the series hasn't initialized yet, exit safely.
+  if (!candleSeries) return;
 
+  // CRITICAL CHANGELOG: Instead of completely returning early when bars are empty (which freezes the chart layout),
+  // we check if bars exist. If they do, update the chart data. If they don't, skip data setting but CONTINUE execution
+  // so price lines, support/resistance, active trades, and drawings are still allowed to calculate and paint onto the screen!
+  if (bars && bars.length > 0) {
     const candleData = bars.map((b) => ({
       time: b.time, open: Number(b.open), high: Number(b.high), low: Number(b.low), close: Number(b.close),
     }));
@@ -608,88 +615,87 @@ export default function CandleChart1({
         color: Number(b.close) >= Number(b.open) ? "#22c55e55" : "#ef444455",
       })));
     }
-    if (trendRef.current) {
-      const t1 = toUnixTime(trendline?.p1?.time), t2 = toUnixTime(trendline?.p2?.time);
-      if (trendline && t1 != null && t2 != null) {
-        trendRef.current.applyOptions({ color: trendline.direction === "up" ? "#22c55e" : "#ef4444" });
-        trendRef.current.setData([{ time: t1, value: Number(trendline.p1.value) }, { time: t2, value: Number(trendline.p2.value) }]);
-      } else {
-        trendRef.current.setData([]);
-      }
-    }
+  }
 
-    if (markers?.length) {
-      const formatted = markers.map((m) => ({ ...m, time: toUnixTime(m.time) })).filter((m) => m.time != null).sort((a, b) => a.time - b.time);
-      try { candleSeries.setMarkers(formatted); } catch { /* older/newer lightweight-charts marker API mismatch — ignore gracefully */ }
+  if (trendRef.current) {
+    const t1 = toUnixTime(trendline?.p1?.time), t2 = toUnixTime(trendline?.p2?.time);
+    if (trendline && t1 != null && t2 != null) {
+      trendRef.current.applyOptions({ color: trendline.direction === "up" ? "#22c55e" : "#ef4444" });
+      trendRef.current.setData([{ time: t1, value: Number(trendline.p1.value) }, { time: t2, value: Number(trendline.p2.value) }]);
     } else {
-      try { candleSeries.setMarkers([]); } catch { /* noop */ }
+      trendRef.current.setData([]);
     }
+  }
 
-    // ── Price lines: active trades' entry (+ SL/TP for the selected one),
-    // legacy entry/sl/tp props, and support/resistance. Cheap to fully redo
-    // each update — unlike the series above, price lines have no setData(). ──
-    priceLinesRef.current.forEach((pl) => { try { candleSeries.removePriceLine(pl); } catch { /* noop */ } });
-    priceLinesRef.current = [];
-    slLineRef.current = null;
-    tpLineRef.current = null;
+  if (markers?.length) {
+    const formatted = markers.map((m) => ({ ...m, time: toUnixTime(m.time) })).filter((m) => m.time != null).sort((a, b) => a.time - b.time);
+    try { candleSeries.setMarkers(formatted); } catch {}
+  } else {
+    try { candleSeries.setMarkers([]); } catch {}
+  }
 
-    // Legacy entry/sl/tp props (used by the Signals detail chart, which has no
-    // `trades` array). When `trades` is populated (Live Prices), those price
-    // lines are drawn per-trade below instead, so skip these to avoid duplicates.
-    if (!trades.length) {
-      if (entry) priceLinesRef.current.push(candleSeries.createPriceLine({ price: Number(entry), color: "#f0b429", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" }));
-      if (sl) {
-        const l = candleSeries.createPriceLine({ price: Number(sl), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
-        priceLinesRef.current.push(l); slLineRef.current = l;
-      }
-      if (tp) {
-        const l = candleSeries.createPriceLine({ price: Number(tp), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
-        priceLinesRef.current.push(l); tpLineRef.current = l;
-      }
+  // ── Price lines & S/R Calculations (Now runs continuously even during historical loads) ──
+  priceLinesRef.current.forEach((pl) => { try { candleSeries.removePriceLine(pl); } catch {} });
+  priceLinesRef.current = [];
+  slLineRef.current = null;
+  tpLineRef.current = null;
+
+  if (!trades.length) {
+    if (entry) priceLinesRef.current.push(candleSeries.createPriceLine({ price: Number(entry), color: "#f0b429", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: "ENTRY" }));
+    if (sl) {
+      const l = candleSeries.createPriceLine({ price: Number(sl), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
+      priceLinesRef.current.push(l); slLineRef.current = l;
     }
+    if (tp) {
+      const l = candleSeries.createPriceLine({ price: Number(tp), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
+      priceLinesRef.current.push(l); tpLineRef.current = l;
+    }
+  }
 
-    trades.forEach((t) => {
-      const color = t.direction === "BUY" ? "#22c55e" : "#ef4444";
-      priceLinesRef.current.push(candleSeries.createPriceLine({
-        price: Number(t.entry_price),
-        color: t.id === selectedTradeId ? "#f59e0b" : color,
-        lineWidth: t.id === selectedTradeId ? 4 : 2,
-        lineStyle: t.id === selectedTradeId ? 0 : 3,
-        axisLabelVisible: true,
-        title: `${t.direction} ${t.pair} (${t.pnl_usd >= 0 ? "+" : ""}${fp(t.pnl_usd, 2)} USD, ${t.pnl_pips}p) (${t.lot_size})`,
-      }));
-      if (t.id !== selectedTradeId) return;
-      const slLine = candleSeries.createPriceLine({ price: Number(t.stop_loss), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
-      const tpLine = candleSeries.createPriceLine({ price: Number(t.take_profit), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
-      priceLinesRef.current.push(slLine, tpLine);
-      slLineRef.current = slLine;
-      tpLineRef.current = tpLine;
-    });
+  trades.forEach((t) => {
+    const color = t.direction === "BUY" ? "#22c55e" : "#ef4444";
+    priceLinesRef.current.push(candleSeries.createPriceLine({
+      price: Number(t.entry_price),
+      color: t.id === selectedTradeId ? "#f59e0b" : color,
+      lineWidth: t.id === selectedTradeId ? 4 : 2,
+      lineStyle: t.id === selectedTradeId ? 0 : 3,
+      axisLabelVisible: true,
+      title: `${t.direction} ${t.pair} (${t.pnl_usd >= 0 ? "+" : ""}${t.pnl_usd.toFixed(2)} USD)`,
+    }));
+    if (t.id !== selectedTradeId) return;
+    const slLine = candleSeries.createPriceLine({ price: Number(t.stop_loss), color: "#ef4444", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "SL ⇕" : "SL" });
+    const tpLine = candleSeries.createPriceLine({ price: Number(t.take_profit), color: "#22c55e", lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: draggableSlTp ? "TP ⇕" : "TP" });
+    priceLinesRef.current.push(slLine, tpLine);
+    slLineRef.current = slLine;
+    tpLineRef.current = tpLine;
+  });
 
-   if (indicators.sr) (supportResistance || []).forEach((lvl) => {
-      const isRes = lvl.type === "resistance";
-      priceLinesRef.current.push(candleSeries.createPriceLine({
-        price: Number(lvl.price),
-        color: isRes ? "#fb7185" : "#34d399",
-        lineWidth: 1, lineStyle: 3, axisLabelVisible: true,
-        title: isRes ? "Resistance" : "Support",
-      }));
-    });
+  if (indicators.sr) (supportResistance || []).forEach((lvl) => {
+    const isRes = lvl.type === "resistance";
+    priceLinesRef.current.push(candleSeries.createPriceLine({
+      price: Number(lvl.price),
+      color: isRes ? "#fb7185" : "#34d399",
+      lineWidth: 1, lineStyle: 3, axisLabelVisible: true,
+      title: isRes ? "Resistance" : "Support",
+    }));
+  });
 
-    // CHANGE: Guard this state update so it never sets layout data to undefined if bars array is blank
+  if (bars && bars.length > 0) {
     const last = bars[bars.length - 1];
-    if (last) {
-      setHover((h) => h ?? { o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume ?? null, time: last.time });
-    }
-
+    setHover((h) => h ?? { o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume ?? null, time: last.time });
+    
     const chart = chartRef.current;
     if (chart && !visibleRangeRef.current) {
       chart.timeScale().fitContent();
       try { visibleRangeRef.current = chart.timeScale().getVisibleLogicalRange() || true; } catch { visibleRangeRef.current = true; }
     }
-    redrawAllTools();
-    
-  }, [bars, markers, supportResistance, trendline, trades, selectedTradeId, entry, sl, tp, indicators.sr, draggableSlTp]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
+
+  // ── RUN DRAWINGS RENDERING IMMEDIATELY ──
+  // This guarantees that the drawn coordinates update correctly even if candlesticks are updating asynchronously!
+  redrawAllTools();
+
+}, [bars, markers, supportResistance, trendline, trades, selectedTradeId, entry, sl, tp, indicators.sr, draggableSlTp, redrawAllTools]);
 
   // ── Live tick / candle-close updates — no chart rebuild, just series.update() ──
   useEffect(() => {
