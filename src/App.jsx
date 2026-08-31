@@ -1,7 +1,9 @@
-import { BrowserRouter, Routes, Route, NavLink, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "./api/Api.jsx";
 import { C, NAV, bottomNav, moreNav } from "./utils/constants.jsx";
+import { useMobile } from "./shared/Shared.jsx";
+import { Icon, BrandMark } from "./components/Icons.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Signals from "./pages/Signals.jsx";
@@ -16,6 +18,7 @@ import Notifications from "./pages/Notifications.jsx";
 import Settings from "./pages/Settings.jsx";
 import Ticker from "./components/Ticker.jsx";
 import { Btn } from "./shared/Shared.jsx";
+import { nowEAT } from "./utils/utils.js";
 import RiskDisclaimer from "./components/RiskDisclaimer.jsx";
 import VerifyEmailPage from "./pages/VerifyEmailPage.jsx";
 
@@ -88,6 +91,13 @@ export default function App() {
   }, [token, api]);
 
   const [moreOpen, setMoreOpen] = useState(false);
+  const mobile = useMobile();
+  const [clock, setClock] = useState(() => nowEAT());
+  useEffect(() => {
+    const iv = setInterval(() => setClock(nowEAT()), 30000);
+    return () => clearInterval(iv);
+  }, []);
+  const pageTitle = window.location.pathname === "/" ? "Dashboard" : window.location.pathname.slice(1).replace(/-/g, " ");
 
   if (window.location.pathname === "/verify-email") return <VerifyEmailPage />;
 
@@ -104,7 +114,7 @@ export default function App() {
           body{
             background:${C.bg};
             color:${C.text};
-            font-family:'Segoe UI',system-ui,sans-serif
+            font-family:var(--font-body);
           }
         `}</style>
 
@@ -130,7 +140,7 @@ body,
 body{
   background:${C.bg};
   color:${C.text};
-  font-family:'Segoe UI',system-ui,sans-serif;
+  font-family:var(--font-body);
   font-size:13px;
   overflow-y:auto;
 }
@@ -182,22 +192,39 @@ body{
           .nav-btn{
             display:flex;
             align-items:center;
-            gap:9px;
-            padding:9px 14px;
+            gap:11px;
+            padding:9px 14px 9px 12px;
             width:100%;
             border:none;
+            border-left:2px solid transparent;
             text-decoration:none;
             background:transparent;
             color:${C.muted};
             font-size:12px;
             font-weight:500;
+            letter-spacing:.1px;
             transition:.15s;
           }
 
-          .nav-btn.active{
-            background:${C.gold}16;
-            color:${C.gold};
+          .nav-btn:hover{
+            color:${C.text};
+            background:${C.surf2};
           }
+
+          .nav-btn.active{
+            background:${C.gold}14;
+            color:${C.gold};
+            border-left:2px solid ${C.gold};
+            font-weight:600;
+          }
+
+          .icon-btn{
+            display:flex; align-items:center; justify-content:center;
+            width:32px; height:32px; border-radius:8px;
+            color:${C.text}; background:${C.surf2}; border:1px solid ${C.border};
+            cursor:pointer; transition:.15s;
+          }
+          .icon-btn:hover{ border-color:${C.gold}66; color:${C.gold}; }
 
           .mobile-nav{
             display:none;
@@ -240,7 +267,7 @@ body{
 
             .mobile-link.active{
               color:${C.gold};
-              background:${C.gold}2;
+              background:${C.gold}14;
             }
 
             .content{
@@ -258,32 +285,41 @@ body{
 
             <div
               style={{
-                padding: "15px 14px 11px",
+                padding: "16px 16px 13px",
                 borderBottom: `1px solid ${C.border}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
               }}
             >
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                }}
-              >
-                Forex<span style={{ color: C.gold }}>Pro</span>
-              </div>
+              <BrandMark size={22} color={C.text} accent={C.gold} />
+              <div>
+                <div
+                  style={{
+                    fontSize: 17,
+                    fontWeight: 700,
+                    fontFamily: "var(--font-display)",
+                    letterSpacing: "-0.2px",
+                    lineHeight: 1,
+                  }}
+                >
+                  Forex<span style={{ color: C.gold }}>Pro</span>
+                </div>
 
-              <div
-                style={{
-                  fontSize: 9,
-                  color: C.muted,
-                  letterSpacing: 2,
-                  marginTop: 2,
-                }}
-              >
-                PROFESSIONAL PLATFORM
+                <div
+                  style={{
+                    fontSize: 8.5,
+                    color: C.muted,
+                    letterSpacing: 1.6,
+                    marginTop: 3,
+                  }}
+                >
+                  PROFESSIONAL PLATFORM
+                </div>
               </div>
             </div>
 
-            <nav style={{ padding: "7px 0", flex: 1 }}>
+            <nav style={{ padding: "10px 0", flex: 1 }}>
               {NAV.map((n) => (
                 <NavLink
                   key={n.id}
@@ -292,16 +328,7 @@ body{
                     isActive ? "nav-btn active" : "nav-btn"
                   }
                 >
-                  <span
-                    style={{
-                      fontSize: 14,
-                      width: 18,
-                      textAlign: "center",
-                    }}
-                  >
-                    {n.icon}
-                  </span>
-
+                  <Icon name={n.icon} size={15} />
                   {n.label}
                 </NavLink>
               ))}
@@ -309,7 +336,7 @@ body{
 
             <div
               style={{
-                padding: "10px 14px",
+                padding: "11px 14px",
                 borderTop: `1px solid ${C.border}`,
               }}
             >
@@ -317,7 +344,7 @@ body{
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: 9,
                 }}
               >
                 <div
@@ -332,13 +359,15 @@ body{
                     justifyContent: "center",
                     fontSize: 12,
                     fontWeight: 800,
+                    fontFamily: "var(--font-display)",
+                    flexShrink: 0,
                   }}
                 >
                   {user?.username?.[0]?.toUpperCase()}
                 </div>
 
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {user?.username}
                   </div>
 
@@ -346,6 +375,7 @@ body{
                     style={{
                       fontSize: 10,
                       color: C.muted,
+                      fontFamily: "var(--font-mono)",
                     }}
                   >
                     {user?.plan?.toUpperCase()} · $
@@ -359,55 +389,62 @@ body{
           {/* Main */}
           <div className="main">
 
-           
-
             <div
               style={{
                 background: C.surf,
                 borderBottom: `1px solid ${C.border}`,
-                padding: "10px 20px",
+                padding: mobile ? "10px 14px" : "11px 22px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
+                gap: 12,
               }}
             >
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                }}
-              >
-                Forex<span style={{ color: C.gold }}>Pro</span>
-                 <div
-                style={{
-                  fontSize: 9,
-                  color: C.muted,
-                  letterSpacing: 2,
-                  marginTop: 2,
-                }}
-              >
-              {window.location.pathname === "/" ? "DASHBOARD" : window.location.pathname.slice(1).toUpperCase()}
-
-              </div>
-              
-              </div>
-             
+              {mobile ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <BrandMark size={19} color={C.text} accent={C.gold} />
+                  <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-display)" }}>
+                    Forex<span style={{ color: C.gold }}>Pro</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-display)", textTransform: "capitalize" }}>
+                    {pageTitle}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2, fontFamily: "var(--font-mono)" }}>
+                    {clock}
+                  </div>
+                </div>
+              )}
 
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: mobile ? 8 : 10,
                 }}
               >
+                {!mobile && (
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, color: C.text,
+                      background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8,
+                      padding: "6px 12px", letterSpacing: 0.2,
+                    }}
+                    title="Account balance"
+                  >
+                    ${Number(user?.balance || 0).toLocaleString()}
+                  </div>
+                )}
+
                 <NavLink
                   to="/notifications"
-                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
-                           width: 32, height: 32, borderRadius: 8, textDecoration: "none",
-                           color: C.text, background: C.surf2, border: `1px solid ${C.border}` }}
+                  className="icon-btn"
+                  style={{ position: "relative", textDecoration: "none" }}
                   title="Notifications"
                 >
-                  🔔
+                  <Icon name="bell" size={16} />
                   {user?.unread_notifications > 0 && (
                     <span style={{
                       position: "absolute", top: -3, right: -3, background: C.red, color: "#fff",
@@ -418,44 +455,36 @@ body{
                     </span>
                   )}
                 </NavLink>
-                <Btn
-                  col={C.surf2}
-                  ghost
-                  onClick={logout}
-                  style={{
-                   width: 32, height: 32, borderRadius: 8,display: "flex", alignItems: "center", justifyContent: "center",
-                  }}
-                >
-                   📤
-                </Btn>
-                 <NavLink to="/profile" style={{cursor: "pointer", display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "inherit"}}>
+
+                {!mobile && (
+                  <NavLink to="/settings" className="icon-btn" style={{ textDecoration: "none" }} title="Settings">
+                    <Icon name="settings" size={16} />
+                  </NavLink>
+                )}
+
+                <button onClick={logout} className="icon-btn" style={{ border: `1px solid ${C.border}` }} title="Sign out">
+                  <Icon name="logout" size={16} />
+                </button>
+
+                <NavLink to="/profile" style={{ cursor: "pointer", display: "flex", alignItems: "center", textDecoration: "none", color: "inherit" }}>
                   <div
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: "50%",
-                    background: C.gold,
-                    color: C.bg,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 12,
-                    fontWeight: 800,
-                  }}
-                >
-                  {user?.username?.[0]?.toUpperCase()}
-                </div>
-                 
-                  
-                </NavLink>
-                <div
                     style={{
-                      fontSize: 10,
-                      color: C.muted,
+                      width: 30,
+                      height: 30,
+                      borderRadius: "50%",
+                      background: C.gold,
+                      color: C.bg,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      fontFamily: "var(--font-display)",
                     }}
                   >
-                    $ {Number(user?.balance || 0).toLocaleString()}
+                    {user?.username?.[0]?.toUpperCase()}
                   </div>
+                </NavLink>
               </div>
             </div>
             {!user?.registration_paid && (
@@ -463,10 +492,10 @@ body{
                 <div style={{
                   background: `${C.gold}18`, borderBottom: `1px solid ${C.gold}55`,
                   padding: "7px 20px", fontSize: 11, color: C.gold, fontWeight: 600,
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                 }}>
-                  <span>🔓 Pay your one-time registration fee to unlock full platform access</span>
-                  <span style={{ textDecoration: "underline" }}>Pay now →</span>
+                  <span>Pay your one-time registration fee to unlock full platform access</span>
+                  <span style={{ textDecoration: "underline", flexShrink: 0 }}>Pay now →</span>
                 </div>
               </NavLink>
             )}
@@ -565,10 +594,7 @@ body{
                     : "mobile-link"
                 }
               >
-                <span style={{ fontSize: 18 }}>
-                  {n.icon}
-                </span>
-
+                <Icon name={n.icon} size={18} />
                 <span>{n.label}</span>
               </NavLink>
             ))}
@@ -577,7 +603,7 @@ body{
               className="mobile-link"
               style={{ background: "none", border: "none", fontFamily: "inherit" }}
             >
-              <span style={{ fontSize: 18 }}>☰</span>
+              <Icon name="more" size={18} />
               <span>More</span>
             </button>
           </div>
@@ -606,11 +632,11 @@ body{
                     to={`/${n.id}`}
                     onClick={() => setMoreOpen(false)}
                     style={{
-                      display: "flex", alignItems: "center", gap: 12,
+                      display: "flex", alignItems: "center", gap: 13,
                       padding: "13px 20px", textDecoration: "none", color: C.text, fontSize: 14,
                     }}
                   >
-                    <span style={{ fontSize: 17, width: 22, textAlign: "center" }}>{n.icon}</span>
+                    <Icon name={n.icon} size={17} />
                     {n.label}
                     {n.id === "notifications" && user?.unread_notifications > 0 && (
                       <span style={{

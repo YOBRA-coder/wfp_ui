@@ -12,7 +12,6 @@ import {
   SectionTitle,
   ChartWrap,
   FG,
-  Sel,
   Btn,
   Badge,
   OkBox,
@@ -37,6 +36,8 @@ export default function PricesPage({ api }) {
   const [selTf, setSelTfRaw] = useState(() => loadMarketPrefs().timeframe);
   const setSelTf = useCallback((tf) => { setSelTfRaw(tf); setTimeframe(tf); }, [setTimeframe]);
   const [tfPickerOpen, setTfPickerOpen] = useState(false);
+  const [chartPairPickerOpen, setChartPairPickerOpen] = useState(false);
+  const [chartPairQuery, setChartPairQuery] = useState("");
   const [bars, setBars] = useState([]);
   const [markers, setMarkers] = useState([]);
   const [sr, setSr] = useState([]);
@@ -514,13 +515,64 @@ export default function PricesPage({ api }) {
           >
             <div style={{ minWidth: 130 }}>
               <FG label="Pair">
-                <Sel
-                  value={selP}
-                  onChange={(e) => setSelP(e.target.value)}
-                  options={PAIRS}
-                />
+                <button
+                  onClick={() => setChartPairPickerOpen(true)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "8px 14px",
+                    background: "#111827", border: `1px solid ${chartPairPickerOpen ? C.gold : "#1e293b"}`,
+                    borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", minWidth: 110, justifyContent: "space-between",
+                  }}
+                >
+                  {selP} <span style={{ fontSize: 9, color: C.muted }}>▼</span>
+                </button>
               </FG>
             </div>
+
+            {chartPairPickerOpen && (
+              <>
+                <div onClick={() => { setChartPairPickerOpen(false); setChartPairQuery(""); }}
+                  style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(2,6,12,0.75)" }} />
+                <div style={{
+                  position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 91,
+                  width: mobile ? "88vw" : 340, maxHeight: "70vh", display: "flex", flexDirection: "column",
+                  background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12,
+                  boxShadow: "0 12px 32px rgba(0,0,0,0.6)", overflow: "hidden",
+                }}>
+                  <div style={{ padding: 12, borderBottom: "1px solid #1e293b" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 8 }}>SELECT PAIR</div>
+                    <input
+                      autoFocus
+                      value={chartPairQuery}
+                      onChange={(e) => setChartPairQuery(e.target.value)}
+                      placeholder="Search pairs…"
+                      style={{ width: "100%", padding: "8px 10px", background: "#111827", border: "1px solid #1e293b", borderRadius: 6, color: "#fff", fontSize: 12, boxSizing: "border-box" }}
+                    />
+                  </div>
+                  <div style={{ overflowY: "auto", padding: 8 }}>
+                    {PAIRS.filter((p) => p.includes(chartPairQuery.trim().toUpperCase())).map((p) => (
+                      <div
+                        key={p}
+                        onClick={() => { setSelP(p); setChartPairPickerOpen(false); setChartPairQuery(""); }}
+                        style={{
+                          padding: "9px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600,
+                          color: p === selP ? C.gold : "#e2e8f0",
+                          background: p === selP ? "rgba(250,204,21,0.08)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => { if (p !== selP) e.currentTarget.style.background = "#111827"; }}
+                        onMouseLeave={(e) => { if (p !== selP) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        {p}
+                      </div>
+                    ))}
+                    {PAIRS.filter((p) => p.includes(chartPairQuery.trim().toUpperCase())).length === 0 && (
+                      <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 12 }}>No pairs match "{chartPairQuery}"</div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
 
             {!mobile && (
               <div style={{ position: "relative" }}>
@@ -730,7 +782,7 @@ export default function PricesPage({ api }) {
               timeframe={selTf}
               api={api}
               onTfClick={() => setTfPickerOpen(true)}
-              height={mobile ? 380 : 560}
+              height={mobile ? 460 : 560}
               entry={copyTrade?.entry_price}
               sl={copyTrade?.stop_loss}
               tp={copyTrade?.take_profit}

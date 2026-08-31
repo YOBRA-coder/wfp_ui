@@ -1,14 +1,33 @@
 /* Global polish — applies everywhere since this file was previously empty */
+
+/* Premium header/dashboard type system:
+   - Space Grotesk: the wordmark, section headers, and hero numerals — a
+     geometric display face with enough personality to read as a considered
+     brand choice, not a system-font default.
+   - Inter: everything else — nav labels, body copy, buttons. Dense
+     data-table UI needs a workhorse face, and Inter is legible at 10-11px.
+   - JetBrains Mono: prices, P&L, balances — anywhere digits need to align
+     visually and feel like terminal data rather than prose. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+:root {
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
 * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 ::selection { background: #F0B42955; color: #fff; }
 
-/* Slim, dark, unobtrusive scrollbars to match the trading-terminal look */
+/* Slim, dark, unobtrusive scrollbars to match the trading-terminal look —
+   colors follow the active theme via the --border/--surf CSS vars the theme
+   engine sets on <html> (see utils/constants.jsx#applyPalette). */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1C2B38; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #2a3f52; }
-* { scrollbar-width: thin; scrollbar-color: #1C2B38 transparent; }
+::-webkit-scrollbar-thumb { background: var(--border, #1C2B38); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted, #2a3f52); }
+* { scrollbar-width: thin; scrollbar-color: var(--border, #1C2B38) transparent; }
 
 input, select, button { font-family: inherit; }
 

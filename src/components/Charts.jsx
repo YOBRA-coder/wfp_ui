@@ -1,4 +1,5 @@
 import { C } from "../utils/constants.jsx";
+import { useTheme } from "../utils/theme.jsx";
 import { fp, f1 } from "../utils/utils.js";
 import { Badge } from "../shared/Shared.jsx";
 import { ago } from "../utils/utils.js";
@@ -519,19 +520,27 @@ export default function CandleChart1({
   const tradesRef = useRef(trades); tradesRef.current = trades;
   const onTradeSelectRef = useRef(onTradeSelect); onTradeSelectRef.current = onTradeSelect;
 
+  const { resolvedTheme } = useTheme();
+
   // ── Build Chart Hook ──
   useEffect(() => {
     if (!ref.current) return;
     visibleRangeRef.current = null;
 
+    // Grid lines need to flip from faint-white to faint-black between dark
+    // and light palettes, or they'd be invisible (or too heavy) — everything
+    // else in the chart's own layout already tracks the live C object.
+    const gridColor = resolvedTheme === "light" ? "rgba(15,23,42,0.06)" : "rgba(255,255,255,0.04)";
+    const borderColor = resolvedTheme === "light" ? "#DFE5EE" : "#1e293b";
+
     const chart = createChart(ref.current, {
       width: ref.current.clientWidth,
       height,
-      layout: { background: { color: "#071018" }, textColor: "#94a3b8", fontFamily: "Inter, sans-serif", fontSize: 12 },
-      grid: { vertLines: { color: "rgba(255,255,255,0.04)" }, horzLines: { color: "rgba(255,255,255,0.04)" } },
+      layout: { background: { color: C.bg }, textColor: C.muted, fontFamily: "Inter, sans-serif", fontSize: 12 },
+      grid: { vertLines: { color: gridColor }, horzLines: { color: gridColor } },
       crosshair: { mode: 1 },
-      rightPriceScale: { borderColor: "#1e293b" },
-      timeScale: { borderColor: "#1e293b", timeVisible: true, secondsVisible: false, tickMarkFormatter: (time) => eatTickLabel(time) },
+      rightPriceScale: { borderColor },
+      timeScale: { borderColor, timeVisible: true, secondsVisible: false, tickMarkFormatter: (time) => eatTickLabel(time) },
       localization: { timeFormatter: (time) => eatTooltipLabel(time), priceFormatter: (p) => Number(p).toFixed(decimals) },
     });
     chartRef.current = chart;
@@ -585,7 +594,7 @@ export default function CandleChart1({
       chart.remove();
       chartRef.current = null;
     };
-  }, [resetKey, decimals]);
+  }, [resetKey, decimals, resolvedTheme]);
 
   // ── Indicator series — add/remove on the existing chart when a toggle is
   // clicked, instead of rebuilding the whole chart (which caused the visible
@@ -722,7 +731,7 @@ export default function CandleChart1({
   const sessionData = getSessionsMetrics(utcHour);
 
   return (
-    <div style={{ position: "relative", width: "100%", background: "#071018", borderRadius: 18, overflow: "hidden" }}>
+    <div style={{ position: "relative", width: "100%", background: C.bg, borderRadius: 18, overflow: "hidden" }}>
       
       {/* ── Top Header Badge Info Rows ── */}
       <div style={{ position: "absolute", top: 8, left: 10, right: 10, zIndex: 10, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, pointerEvents: "none" }}>
@@ -844,6 +853,11 @@ export default function CandleChart1({
     </div>
   );
 }
+
+// Named export alongside the default export above — every page that renders
+// the chart imports it as `{ CandleChart1 }`, which a default-only export
+// can't satisfy (this was breaking the production build entirely).
+export { CandleChart1 };
 
 // ─── Signal card presentation helper ─────────────────────────────────────────
 export function SigCard({ s, selected, onClick }) {

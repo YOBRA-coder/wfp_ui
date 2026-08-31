@@ -2,16 +2,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { C } from "../utils/constants.jsx";
-import { Card, SectionTitle, Stat, Badge, Row, Grid } from "../shared/Shared.jsx";
+import { Card, SectionTitle, Badge, Row, Grid, useMobile } from "../shared/Shared.jsx";
 import { ago, fp, f2, fpc, usd } from "../utils/utils.js";
 import { useLiveSocket } from "../hooks/useLiveSocket.js";
 import { WS_BASE } from "../api/Api.jsx";
 import { TFS } from "../components/Charts.jsx";
 import { useSyncedMarketPrefs } from "../utils/marketPrefs.js";
 import PairPicker from "../shared/PairPicker.jsx";
+import { Icon } from "../components/Icons.jsx";
 
 export default function Dashboard({ api }) {
     const navigate = useNavigate();
+    const mobile = useMobile();
     const [stats, setStats] = useState(null);
     const [prices, setPrices] = useState([]);
     const [signals, setSignals] = useState([]);
@@ -22,7 +24,6 @@ export default function Dashboard({ api }) {
     const [editingDefaults, setEditingDefaults] = useState(false);
     const watchlist = prefs.watchlist;
     const pricesWsUrl = `${WS_BASE}/ws/prices?pairs=${watchlist.join(",")}`;
-    const mobile = window.innerWidth < 768;
 
     useEffect(() => {
         api.get("/dashboard/stats").then(setStats).catch(() => { });
@@ -49,37 +50,55 @@ export default function Dashboard({ api }) {
         });
     };
 
-    return (
-        <div style={{ padding: mobile ? 12 : 20, maxWidth: "100%", marginBottom: 100, boxSizing: "border-box" }}>
+    const equityDelta = stats ? Number(stats.equity || 0) - Number(stats.balance || 0) : 0;
 
-            {/* ── Account overview ── */}
+    return (
+        <div style={{ padding: mobile ? 12 : 22, maxWidth: 1400, margin: "0 auto", marginBottom: 100, boxSizing: "border-box" }}>
+
+            {/* ── Account overview — balance leads as the hero figure, everything
+                 else is a secondary metric around it, instead of four visually
+                 equal boxes. ── */}
             {stats && (
-                <Grid cols="repeat(4,minmax(0,1fr))" mobileCols="1fr 1fr" gap={12} style={{ marginBottom: 18 }}>
-                    <Stat
-                        label="Balance"
-                        value={`$${Number(stats.balance || 0).toLocaleString()}`}
-                        color={C.blue}
-                        sub={`Equity $${Number(stats.equity || 0).toLocaleString()}`}
-                    />
-                    <Stat
-                        label="Copy P&L"
-                        value={usd(stats.total_pnl_usd)}
-                        color={(stats.total_pnl_usd || 0) >= 0 ? C.green : C.red}
-                        sub={`${stats.copy_trades || 0} trades`}
-                    />
-                    <Stat
-                        label="Copying"
-                        value={stats.active_subscriptions || 0}
-                        color={C.purple}
-                        sub="active providers"
-                    />
-                    <Stat
-                        label="Courses Done"
-                        value={stats.courses_completed || 0}
-                        color={C.gold}
-                        sub="education"
-                    />
-                </Grid>
+                <div
+                    style={{
+                        background: `linear-gradient(135deg, ${C.surf} 0%, ${C.surf2} 100%)`,
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 14,
+                        padding: mobile ? 16 : "20px 24px",
+                        marginBottom: 16,
+                        display: "flex",
+                        flexDirection: mobile ? "column" : "row",
+                        alignItems: mobile ? "flex-start" : "flex-end",
+                        justifyContent: "space-between",
+                        gap: mobile ? 16 : 0,
+                    }}
+                >
+                    <div>
+                        <div style={{ fontSize: 10.5, color: C.muted, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 6 }}>
+                            Account balance
+                        </div>
+                        <div style={{
+                            fontFamily: "var(--font-mono)", fontSize: mobile ? 30 : 40, fontWeight: 700,
+                            color: C.text, lineHeight: 1, letterSpacing: "-0.5px",
+                        }}>
+                            ${Number(stats.balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div style={{ fontSize: 12, color: C.muted, marginTop: 8, fontFamily: "var(--font-mono)" }}>
+                            Equity ${Number(stats.equity || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {equityDelta !== 0 && (
+                                <span style={{ color: equityDelta >= 0 ? C.green : C.red, marginLeft: 6 }}>
+                                    ({equityDelta >= 0 ? "+" : ""}{equityDelta.toFixed(2)})
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: mobile ? 10 : 22, flexWrap: "wrap" }}>
+                        <MiniStat icon="copy" label="Copy P&L" value={usd(stats.total_pnl_usd)} color={(stats.total_pnl_usd || 0) >= 0 ? C.green : C.red} />
+                        <MiniStat icon="providers" label="Copying" value={stats.active_subscriptions || 0} sub="providers" color={C.purple} />
+                        <MiniStat icon="education" label="Courses" value={stats.courses_completed || 0} sub="completed" color={C.gold} />
+                    </div>
+                </div>
             )}
 
             {/* ── Left: markets. Right: activity that needs attention ── */}
@@ -115,12 +134,13 @@ export default function Dashboard({ api }) {
                                 <button
                                     onClick={() => setEditingDefaults((v) => !v)}
                                     style={{
-                                        fontSize: 10, fontWeight: 700, color: editingDefaults ? "#071018" : C.muted,
+                                        display: "flex", alignItems: "center", gap: 4,
+                                        fontSize: 10, fontWeight: 700, color: editingDefaults ? C.bg : C.muted,
                                         background: editingDefaults ? C.gold : "transparent", border: `1px solid ${C.border}`,
                                         borderRadius: 6, padding: "3px 9px", cursor: "pointer",
                                     }}
                                 >
-                                    {editingDefaults ? "Done" : "⚙ Defaults"}
+                                    <Icon name="settings" size={10} /> {editingDefaults ? "Done" : "Defaults"}
                                 </button>
                             </div>
                         </div>
@@ -171,7 +191,7 @@ export default function Dashboard({ api }) {
                                     style={{ display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
                                 >
                                     <strong style={{ fontSize: 12 }}>{p.pair}</strong>
-                                    <span style={{ fontFamily: "monospace", fontSize: 12, color: p.direction === "up" ? C.green : C.red }}>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: p.direction === "up" ? C.green : C.red }}>
                                         {p.pair === "BTCUSD" ? f2(p.price) : fp(p.price)}
                                     </span>
                                     <span style={{ color: p.direction === "up" ? C.green : C.red, fontSize: 11, minWidth: 64, textAlign: "right" }}>
@@ -198,7 +218,7 @@ export default function Dashboard({ api }) {
                                     <strong style={{ flex: 1, fontSize: 12 }}>{s.pair}</strong>
                                     <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
                                     <Badge col={C.muted}>{s.timeframe}</Badge>
-                                    <span style={{ fontFamily: "monospace", fontSize: 11 }}>{fp(s.entry_price)}</span>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(s.entry_price)}</span>
                                     <span style={{ color: C.gold, fontSize: 11 }}>{s.confidence}%</span>
                                 </Row>
                             ))
@@ -226,8 +246,8 @@ export default function Dashboard({ api }) {
                                     <strong style={{ fontSize: 12, flex: 1 }}>{t.pair}</strong>
                                     <Badge col={C.gold}>{t.timeframe}</Badge>
                                     <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>
-                                    <span style={{ fontFamily: "monospace", fontSize: 11 }}>{fp(t.entry_price)}</span>
-                                    <span style={{ fontWeight: 700, fontSize: 12, color: Number(t.pnl_usd) >= 0 ? C.green : C.red }}>
+                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(t.entry_price)}</span>
+                                    <span style={{ fontWeight: 700, fontSize: 12, fontFamily: "var(--font-mono)", color: Number(t.pnl_usd) >= 0 ? C.green : C.red }}>
                                         {usd(t.pnl_usd)}
                                     </span>
                                     <span style={{ fontWeight: 700, fontSize: 12, color: C.muted }}>{t.status}</span>
@@ -269,6 +289,25 @@ export default function Dashboard({ api }) {
                     onClose={() => setPairPickerOpen(false)}
                 />
             )}
+        </div>
+    );
+}
+
+function MiniStat({ icon, label, value, sub, color }) {
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{
+                width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                background: `${color}18`, color, flexShrink: 0,
+            }}>
+                <Icon name={icon} size={14} />
+            </div>
+            <div>
+                <div style={{ fontSize: 9.5, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" }}>{label}</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 15, fontWeight: 700, color }}>
+                    {value}{sub && <span style={{ fontSize: 10, color: C.muted, fontFamily: "var(--font-body)", fontWeight: 500, marginLeft: 4 }}>{sub}</span>}
+                </div>
+            </div>
         </div>
     );
 }

@@ -48,6 +48,12 @@ export default function Journal({ api }) {
             ? <div style={{ color: C.muted, fontSize: 12 }}>No journal entries yet — log your first trade →</div>
             : (
               <>
+                {/* Fixed-width columns don't fit a phone screen — scroll
+                    horizontally within the card instead of letting the
+                    app's global overflow-x:hidden silently clip columns off
+                    the right edge. */}
+                <div style={{ overflowX: "auto" }}>
+                <div style={{ minWidth: 560 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "75px 50px 95px 95px 75px 75px 1fr", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.border}`, fontSize: 9, color: C.muted, letterSpacing: 1, fontWeight: 700 }}>
                   {["PAIR","DIR","ENTRY","EXIT","P&L","PIPS","SETUP / SOURCE"].map(h => <span key={h}>{h}</span>)}
                 </div>
@@ -73,6 +79,8 @@ export default function Journal({ api }) {
                     </span>
                   </div>
                 ))}
+                </div>
+                </div>
               </>
             )}
         </Card>

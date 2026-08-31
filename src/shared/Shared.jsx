@@ -528,5 +528,4 @@ export {
   Modal,
   ProgressBar,
   Row,
-  useMobile,
 };

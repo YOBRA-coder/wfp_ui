@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { C } from "../utils/constants.jsx";
+import { useTheme } from "../utils/theme.jsx";
 import { Card, SectionTitle, Btn, FG, Inp, Sel, OkBox, ErrBox, useMobile } from "../shared/Shared.jsx";
 import InstallApp from "../components/InstallApp.jsx";
 import PushNotifications from "../components/PushNotifications.jsx";
@@ -9,6 +10,7 @@ import PasswordField from "../shared/PasswordField.jsx";
 
 export default function Settings({ api, user, setUser }) {
   const mobile = useMobile();
+  const { themeSetting, resolvedTheme, setThemeSetting } = useTheme();
   const [prefs, setPrefs] = useState({
     email_alerts_enabled: user?.email_alerts_enabled !== 0,
     default_lot_size: user?.default_lot_size ?? 0.02,
@@ -132,6 +134,42 @@ export default function Settings({ api, user, setUser }) {
         {ok && <OkBox msg={ok} />}
         <ErrBox msg={err} />
         <Btn col={C.gold} onClick={saveTrading} disabled={busy}>{busy ? "Saving…" : "Save Settings"}</Btn>
+      </Card>
+
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>Appearance</div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>
+          Auto follows your device's system setting and switches automatically if it changes.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
+          {[
+            { id: "auto",  label: "Auto",       swatch: resolvedTheme === "light" ? "#F3F5F9" : "#07090D" },
+            { id: "dark",  label: "Dark",        swatch: "#07090D" },
+            { id: "black", label: "Pure Black",  swatch: "#000000" },
+            { id: "light", label: "Light",       swatch: "#F3F5F9" },
+          ].map((opt) => {
+            const active = themeSetting === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => setThemeSetting(opt.id)}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                  padding: "10px 8px", borderRadius: 10, cursor: "pointer",
+                  background: active ? `${C.gold}14` : C.surf2,
+                  border: `1.5px solid ${active ? C.gold : C.border}`,
+                }}
+              >
+                <span style={{
+                  width: 26, height: 26, borderRadius: "50%", background: opt.swatch,
+                  border: `1px solid ${C.border}`,
+                  boxShadow: opt.id === "auto" ? `inset -13px 0 0 0 ${resolvedTheme === "light" ? "#07090D" : "#F3F5F9"}` : "none",
+                }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: active ? C.gold : C.text }}>{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </Card>
 
       <Card>

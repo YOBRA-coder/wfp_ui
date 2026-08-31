@@ -12,4 +12,16 @@ const ago = (s) => {
   return `${Math.floor(d / 3600)}h ago`;
 };
 
-export { fp, f2, f1, fpc, usd, ago };
+// Weekday + date + time in East Africa Time, for the top-bar clock — the
+// same Africa/Nairobi timezone the charts already use, matching the EAT
+// fix in Charts.jsx rather than falling back to the browser's local zone.
+const nowEAT = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi", weekday: "short", day: "2-digit", month: "short",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value || "";
+  return `${get("weekday")}, ${get("day")} ${get("month")} · ${get("hour")}:${get("minute")} EAT`;
+};
+
+export { fp, f2, f1, fpc, usd, ago, nowEAT };
