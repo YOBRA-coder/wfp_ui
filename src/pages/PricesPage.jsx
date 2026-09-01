@@ -365,7 +365,7 @@ export default function PricesPage({ api }) {
             // a reconnect, the "active trades" filter briefly matching
             // nothing) and then snapping back once data arrives. That
             // collapse-and-snap was the "keeps disappearing" jank.
-            minHeight: mobile ? 160 : 320,
+            minHeight: mobile ? 100 : 200,
             maxHeight: mobile ? "60vh" : "90vh",
             overflowY: "auto",
             paddingRight: 4,
