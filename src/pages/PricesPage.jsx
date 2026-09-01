@@ -356,7 +356,7 @@ export default function PricesPage({ api }) {
         {(!mobile || showWatchlist) && <div
           style={{
             display: "flex",
-            flexDirection: "row",
+            flexDirection: mobile ? "row" : "row",
             flexWrap: "wrap",
             gap: 20,
             // A fixed floor here — not just a max — stops the panel from
