@@ -86,6 +86,20 @@ const paths = {
       <circle cx="10" cy="17.5" r="1.9" fill="currentColor" stroke="none" />
     </>
   ),
+  guide: (
+    <>
+      <circle cx="12" cy="12" r="9.5" />
+      <path d="M9.3 9.2a2.7 2.7 0 0 1 5.2.9c0 1.8-2.5 2.1-2.5 3.9" />
+      <circle cx="12" cy="17" r="0.15" fill="currentColor" stroke="currentColor" strokeWidth="2.2" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <line x1="20" y1="20" x2="15.3" y2="15.3" />
+    </>
+  ),
+  chevronRight: <polyline points="9 5 15 12 9 19" />,
 };
 
 export function Icon({ name, size = 16, strokeWidth = 1.7, style = {}, ...rest }) {

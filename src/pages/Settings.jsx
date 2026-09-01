@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { C } from "../utils/constants.jsx";
 import { useTheme } from "../utils/theme.jsx";
-import { Card, SectionTitle, Btn, FG, Inp, Sel, OkBox, ErrBox, useMobile } from "../shared/Shared.jsx";
+import { Card, SectionTitle, Btn, FG, Inp, OkBox, ErrBox, useMobile, Toggle } from "../shared/Shared.jsx";
+import { useModulePref } from "../utils/modulePrefs.js";
 import InstallApp from "../components/InstallApp.jsx";
 import PushNotifications from "../components/PushNotifications.jsx";
 import PasswordField from "../shared/PasswordField.jsx";
@@ -11,6 +12,7 @@ import PasswordField from "../shared/PasswordField.jsx";
 export default function Settings({ api, user, setUser }) {
   const mobile = useMobile();
   const { themeSetting, resolvedTheme, setThemeSetting } = useTheme();
+  const [newsFeedEnabled, setNewsFeedEnabled] = useModulePref("news_feed", true);
   const [prefs, setPrefs] = useState({
     email_alerts_enabled: user?.email_alerts_enabled !== 0,
     default_lot_size: user?.default_lot_size ?? 0.02,
@@ -170,6 +172,20 @@ export default function Settings({ api, user, setUser }) {
             );
           })}
         </div>
+      </Card>
+
+      <Card>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>Dashboard modules</div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>
+          Optional widgets on your Dashboard. Saved on this device.
+        </div>
+        <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>Market news feed</div>
+            <div style={{ fontSize: 10.5, color: C.muted, marginTop: 1 }}>Live forex headlines from Investing.com and FXStreet</div>
+          </div>
+          <Toggle checked={newsFeedEnabled} onChange={(v) => setNewsFeedEnabled(v)} />
+        </label>
       </Card>
 
       <Card>

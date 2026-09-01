@@ -16,6 +16,7 @@ import Profile from "./pages/Profile.jsx";
 import Billing from "./pages/Billing.jsx";
 import Notifications from "./pages/Notifications.jsx";
 import Settings from "./pages/Settings.jsx";
+import UserGuide from "./pages/UserGuide.jsx";
 import Ticker from "./components/Ticker.jsx";
 import { Btn } from "./shared/Shared.jsx";
 import { nowEAT } from "./utils/utils.js";
@@ -566,6 +567,11 @@ body{
                 <Route
                   path="/settings"
                   element={<Settings api={api} user={user} setUser={setUser} />}
+                />
+
+                <Route
+                  path="/guide"
+                  element={<UserGuide />}
                 />
 
                 <Route

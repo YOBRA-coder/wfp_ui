@@ -10,6 +10,8 @@ import { TFS } from "../components/Charts.jsx";
 import { useSyncedMarketPrefs } from "../utils/marketPrefs.js";
 import PairPicker from "../shared/PairPicker.jsx";
 import { Icon } from "../components/Icons.jsx";
+import NewsFeed from "../components/NewsFeed.jsx";
+import { useModulePref } from "../utils/modulePrefs.js";
 
 export default function Dashboard({ api }) {
     const navigate = useNavigate();
@@ -22,6 +24,7 @@ export default function Dashboard({ api }) {
     const { prefs, setWatchlist, setTimeframe, setIndicators } = useSyncedMarketPrefs(api, true);
     const [pairPickerOpen, setPairPickerOpen] = useState(false);
     const [editingDefaults, setEditingDefaults] = useState(false);
+    const [newsFeedEnabled] = useModulePref("news_feed", true);
     const watchlist = prefs.watchlist;
     const pricesWsUrl = `${WS_BASE}/ws/prices?pairs=${watchlist.join(",")}`;
 
@@ -224,6 +227,8 @@ export default function Dashboard({ api }) {
                             ))
                         )}
                     </Card>
+
+                    {newsFeedEnabled && <NewsFeed api={api} limit={6} />}
                 </div>
 
                 {/* RIGHT — Active Copy Trades + Notifications (things needing attention) */}

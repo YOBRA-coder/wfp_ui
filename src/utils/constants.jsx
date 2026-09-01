@@ -69,6 +69,7 @@ const NAV = [
   { id: "prices",        icon: "prices",    label: "Live Prices"   },
   { id: "billing",       icon: "billing",   label: "Billing"       },
   { id: "notifications", icon: "bell",      label: "Notifications" },
+  { id: "guide",         icon: "guide",     label: "User Guide"    },
   { id: "settings",      icon: "settings",  label: "Settings"      },
   { id: "profile",       icon: "profile",   label: "Profile / MT5" },
 ];
@@ -87,6 +88,7 @@ const moreNav = [
   { id: "journal",       icon: "journal",   label: "Journal"       },
   { id: "billing",       icon: "billing",   label: "Billing"       },
   { id: "notifications", icon: "bell",      label: "Notifications" },
+  { id: "guide",         icon: "guide",     label: "User Guide"    },
   { id: "settings",      icon: "settings",  label: "Settings"      },
   { id: "profile",       icon: "profile",   label: "Profile / MT5" },
 ];

@@ -411,7 +411,15 @@ export default function CandleChart1({
             const dist = Math.abs(y - pt.cy);
             if (dist <= HIT_PX && dist < closestDist) { closest = t; closestDist = dist; }
           });
-          if (closest) onTradeSelectRef.current?.(closest);
+          if (closest) {
+            onTradeSelectRef.current?.(closest);
+          } else if (selectedTradeIdRef.current != null) {
+            // Clicked empty chart space while a trade was selected — this is
+            // the only way to clear a selection today (there was previously
+            // no way to deselect at all once you'd clicked or dragged a
+            // trade's SL/TP). Passing null tells the caller to clear it.
+            onTradeSelectRef.current?.(null);
+          }
         }
       }
       return;
@@ -519,6 +527,7 @@ export default function CandleChart1({
   const barsRef = useRef(bars); barsRef.current = bars;
   const tradesRef = useRef(trades); tradesRef.current = trades;
   const onTradeSelectRef = useRef(onTradeSelect); onTradeSelectRef.current = onTradeSelect;
+  const selectedTradeIdRef = useRef(selectedTradeId); selectedTradeIdRef.current = selectedTradeId;
 
   const { resolvedTheme } = useTheme();
 
@@ -564,7 +573,11 @@ export default function CandleChart1({
         const dist = Math.abs(y - param.point.y);
         if (dist <= HIT_PX && dist < closestDist) { closest = t; closestDist = dist; }
       });
-      if (closest) onTradeSelectRef.current?.(closest);
+      if (closest) {
+        onTradeSelectRef.current?.(closest);
+      } else if (selectedTradeIdRef.current != null) {
+        onTradeSelectRef.current?.(null);
+      }
     });
 
     chart.subscribeCrosshairMove((param) => {
@@ -735,8 +748,8 @@ export default function CandleChart1({
       
       {/* ── Top Header Badge Info Rows ── */}
       <div style={{ position: "absolute", top: 8, left: 10, right: 10, zIndex: 10, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, pointerEvents: "none" }}>
-        <div style={{ display: "flex", gap: 6, background: "rgba(7,16,24,0.85)", border: "1px solid #1e293b", borderRadius: 8, padding: "4px 8px", pointerEvents: "auto", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{pair}</span>
+        <div style={{ display: "flex", gap: 6, background: `${C.surf}D9`, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 8px", pointerEvents: "auto", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>{pair}</span>
           {timeframe && (
             <span
               onClick={() => onTfClick && onTfClick()}
@@ -751,18 +764,18 @@ export default function CandleChart1({
             </span>
           )}
           {hover && (
-            <span style={{ fontSize: 10, color: "#94a3b8", display: "flex", gap: 5 }}>
-              <span>O<b style={{ color: "#cbd5e1" }}>{fp(hover.o, decimals)}</b></span>
+            <span style={{ fontSize: 10, color: C.muted, display: "flex", gap: 5 }}>
+              <span>O<b style={{ color: C.text }}>{fp(hover.o, decimals)}</b></span>
               <span>H<b style={{ color: "#22c55e" }}>{fp(hover.h, decimals)}</b></span>
               <span>L<b style={{ color: "#ef4444" }}>{fp(hover.l, decimals)}</b></span>
-              <span>C<b style={{ color: "#cbd5e1" }}>{fp(hover.c, decimals)}</b></span>
+              <span>C<b style={{ color: C.text }}>{fp(hover.c, decimals)}</b></span>
             </span>
           )}
         </div>
         
         {/* Live Active + Upcoming Global Trading Sessions Widget Banner */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(7,16,24,0.85)", border: "1px solid #1e293b", borderRadius: 8, padding: "4px 8px", pointerEvents: "auto", fontSize: 10, color: "#94a3b8", flexWrap: "wrap" }}>
-          <span style={{ fontWeight: 700, color: "#cbd5e1", fontFamily: "monospace" }}>{eatNowLabel()} EAT</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, background: `${C.surf}D9`, border: `1px solid ${C.border}`, borderRadius: 8, padding: "4px 8px", pointerEvents: "auto", fontSize: 10, color: C.muted, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 700, color: C.text, fontFamily: "var(--font-mono, monospace)" }}>{eatNowLabel()} EAT</span>
           <span style={{ opacity: 0.35 }}>·</span>
           {sessionData.map((s) => (
             <span key={s.name} style={{ display: "flex", alignItems: "center", gap: 3, opacity: s.isOpen ? 1 : 0.45 }} title={s.isOpen ? "Active Now" : `Opens in ${s.hoursUntil}h`}>
@@ -774,9 +787,9 @@ export default function CandleChart1({
       </div>
 
       {live && (
-        <div style={{ position: "absolute", top: 45, right: 14, zIndex: 10, display: "flex", alignItems: "center", gap: 6, background: "rgba(7,16,24,0.85)", border: "1px solid #1e293b", borderRadius: 20, padding: "3px 10px" }}>
+        <div style={{ position: "absolute", top: 45, right: 14, zIndex: 10, display: "flex", alignItems: "center", gap: 6, background: `${C.surf}D9`, border: `1px solid ${C.border}`, borderRadius: 20, padding: "3px 10px" }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
-          <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>LIVE</span>
+          <span style={{ fontSize: 10, color: C.muted, fontWeight: 700 }}>LIVE</span>
         </div>
       )}
 
@@ -801,33 +814,33 @@ export default function CandleChart1({
       {enableDrawing && (
         <div style={{
           position: "absolute", bottom: 12, left: 12, zIndex: 20, display: "flex", alignItems: "center", gap: 4,
-          background: "rgba(11, 23, 35, 0.95)", border: "1px solid #1f2937", borderRadius: 8, padding: 4,
+          background: `${C.surf}F2`, border: `1px solid ${C.border}`, borderRadius: 8, padding: 4,
           boxShadow: "0 4px 16px rgba(0,0,0,0.6)"
         }}>
           <button onClick={() => setTool(t => t === "select" ? "none" : "select")} title="Select / Move Tool"
-            style={{ width: 28, height: 28, background: tool === "select" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "select" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "select" ? C.gold : "#94a3b8", fontSize: 12 }}>
+            style={{ width: 28, height: 28, background: tool === "select" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "select" ? C.gold : C.border}`, borderRadius: 5, cursor: "pointer", color: tool === "select" ? C.gold : C.muted, fontSize: 12 }}>
             ⬈
           </button>
           <button onClick={() => setTool("horizontal")} title="Horizontal Axis Line"
-            style={{ width: 28, height: 28, background: tool === "horizontal" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "horizontal" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "horizontal" ? C.gold : "#94a3b8" }}>
+            style={{ width: 28, height: 28, background: tool === "horizontal" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "horizontal" ? C.gold : C.border}`, borderRadius: 5, cursor: "pointer", color: tool === "horizontal" ? C.gold : C.muted }}>
             ―
           </button>
           <button onClick={() => setTool("vertical")} title="Vertical Timeline Anchor"
-            style={{ width: 28, height: 28, background: tool === "vertical" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "vertical" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "vertical" ? C.gold : "#94a3b8" }}>
+            style={{ width: 28, height: 28, background: tool === "vertical" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "vertical" ? C.gold : C.border}`, borderRadius: 5, cursor: "pointer", color: tool === "vertical" ? C.gold : C.muted }}>
             ｜
           </button>
           <button onClick={() => setTool("trend")} title="Trend Line Vector"
-            style={{ width: 28, height: 28, background: tool === "trend" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "trend" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "trend" ? C.gold : "#94a3b8", fontSize: 13 }}>
+            style={{ width: 28, height: 28, background: tool === "trend" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "trend" ? C.gold : C.border}`, borderRadius: 5, cursor: "pointer", color: tool === "trend" ? C.gold : C.muted, fontSize: 13 }}>
             ╱
           </button>
           <button onClick={() => setTool("rect")} title="Demand Area Box"
-            style={{ width: 28, height: 28, background: tool === "rect" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "rect" ? C.gold : "#1e293b"}`, borderRadius: 5, cursor: "pointer", color: tool === "rect" ? C.gold : "#94a3b8" }}>
+            style={{ width: 28, height: 28, background: tool === "rect" ? `${C.gold}25` : "transparent", border: `1px solid ${tool === "rect" ? C.gold : C.border}`, borderRadius: 5, cursor: "pointer", color: tool === "rect" ? C.gold : C.muted }}>
             ▭
           </button>
 
           {(drawings.length > 0 || selectedDrawingId) && (
             <>
-              <div style={{ width: 1, height: 16, background: "#1e293b", margin: "0 4px" }} />
+              <div style={{ width: 1, height: 16, background: C.border, margin: "0 4px" }} />
               <button 
                 onClick={() => {
                   if (selectedDrawingId) {
@@ -838,7 +851,7 @@ export default function CandleChart1({
                   }
                 }} 
                 title={selectedDrawingId ? "Delete Active Selection" : "Undo Action"}
-                style={{ width: 28, height: 28, background: "transparent", border: "1px solid #1e293b", borderRadius: 5, cursor: "pointer", color: selectedDrawingId ? "#ef4444" : "#94a3b8", fontSize: 12 }}
+                style={{ width: 28, height: 28, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 5, cursor: "pointer", color: selectedDrawingId ? "#ef4444" : C.muted, fontSize: 12 }}
               >
                 {selectedDrawingId ? "🗑️" : "↺"}
               </button>

@@ -70,8 +70,19 @@ export default function PricesPage({ api }) {
   const copyTradeId = searchParams.get('copyTradeId');
   const [selectedTradeId, setSelectedTradeId] = useState(copyTradeId || null);
 
-  // Deep link from Dashboard: /prices?pair=EURUSD&copyTradeId=44 — show that trade's progress
-  //const [copyTradeId, setCopyTradeId] = useState(() => searchParams.get("copyTradeId") || null);
+  // Deep link from Dashboard/Copy Trading: /prices?pair=EURUSD&copyTradeId=44
+  // — the useState initializers above only run on the very first mount, so
+  // clicking a *different* copy-trade link while already sitting on this
+  // page (same route, only the query string changes — React Router doesn't
+  // remount the component for that) silently did nothing. This effect picks
+  // up subsequent changes to the URL's pair/copyTradeId and applies them.
+  useEffect(() => {
+    const urlPair = searchParams.get("pair");
+    const urlTradeId = searchParams.get("copyTradeId");
+    if (urlPair && urlPair !== selP) setSelP(urlPair);
+    if (urlTradeId && urlTradeId !== selectedTradeId) setSelectedTradeId(urlTradeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjSl, setAdjSl] = useState("");
   const [adjTp, setAdjTp] = useState("");
@@ -116,6 +127,15 @@ export default function PricesPage({ api }) {
     setSelectedTradeId(trade.id);
     setAdjSl(String(trade.stop_loss ?? ""));
     setAdjTp(String(trade.take_profit ?? ""));
+    setAdjustOpen(false);
+  }, []);
+  // Nothing in the UI previously let you clear a selected trade once you'd
+  // clicked one on the chart or dragged its SL/TP — it just stayed "stuck"
+  // selected. This clears it back to null.
+  const deselectTrade = useCallback(() => {
+    setSelectedTradeId(null);
+    setCopyTrade(null);
+    setAdjustOpen(false);
   }, []);
   const [watchlistFilter, setWatchlistFilter] = useState("all"); // "all" | "active" — Live Markets panel toggle
 
@@ -193,8 +213,12 @@ export default function PricesPage({ api }) {
   // Clear the old pair/timeframe's data the instant the user switches — otherwise
   // the previous chart just sits there frozen (mislabeled with the new pair)
   // until the REST fetch below resolves, with no indication anything is loading.
+  // (This used to be disabled, which was worse: the chart tears down and
+  // rebuilds for the new pair's price precision, but kept showing the OLD
+  // pair's candle data on it for a moment — mismatched decimals/scale, which
+  // is what read as "malformed" candles before the real ones arrived.)
   useEffect(() => {
-    //setBars([]);
+    setBars([]);
     setMarkers([]);
     setSr([]);
     setTrendline(null);
@@ -252,7 +276,7 @@ export default function PricesPage({ api }) {
         gridTemplateColumns: mobile ? "1fr" : "1fr",
         gap: mobile ? 12 : 18,
         minHeight: "60vh",
-        background: "#071018",
+        background: C.bg,
         boxSizing: "border-box",
         width: "100%",
         overflowX: "hidden",
@@ -262,8 +286,8 @@ export default function PricesPage({ api }) {
       <Card
         style={{
           padding: 14,
-          background: "#0b1723",
-          border: "1px solid #1f2937",
+          background: C.surf,
+          border: `1px solid ${C.border}`,
           overflow: "hidden",
         }}
       >
@@ -281,17 +305,17 @@ export default function PricesPage({ api }) {
             <button
               onClick={() => setPairPickerOpen(true)}
               title="Search all pairs / manage watchlist"
-              style={{ background: "none", border: "1px solid #1f2937", borderRadius: 6, color: C.gold, fontSize: 11, padding: "4px 9px", cursor: "pointer", fontWeight: 700 }}
+              style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.gold, fontSize: 11, padding: "4px 9px", cursor: "pointer", fontWeight: 700 }}
             >
               + Add pairs
             </button>
-            <div style={{ display: "flex", background: "#0f172a", border: "1px solid #1f2937", borderRadius: 7, padding: 2 }}>
+            <div style={{ display: "flex", background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 7, padding: 2 }}>
               <button
                 onClick={() => setWatchlistFilter("all")}
                 style={{
                   fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 5, border: "none", cursor: "pointer",
                   background: watchlistFilter === "all" ? C.gold : "transparent",
-                  color: watchlistFilter === "all" ? "#071018" : "#94a3b8",
+                  color: watchlistFilter === "all" ? C.bg : C.muted,
                 }}
               >
                 All
@@ -301,7 +325,7 @@ export default function PricesPage({ api }) {
                 style={{
                   fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 5, border: "none", cursor: "pointer",
                   background: watchlistFilter === "active" ? C.gold : "transparent",
-                  color: watchlistFilter === "active" ? "#071018" : "#94a3b8",
+                  color: watchlistFilter === "active" ? C.bg : C.muted,
                 }}
               >
                 Active trades ({allOpenTrades.length})
@@ -310,7 +334,7 @@ export default function PricesPage({ api }) {
             {mobile && (
               <button
                 onClick={() => setShowWatchlist(s => !s)}
-                style={{ background: "none", border: `1px solid #1f2937`, borderRadius: 6, color: "#94a3b8", fontSize: 11, padding: "4px 9px", cursor: "pointer" }}
+                style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "4px 9px", cursor: "pointer" }}
               >
                 {showWatchlist ? "Hide ▲" : "Show ▼"}
               </button>
@@ -321,7 +345,7 @@ export default function PricesPage({ api }) {
                 width: 10,
                 height: 10,
                 borderRadius: 99,
-                background: priceStatus === "open" ? "#22c55e" : "#475569",
+                background: priceStatus === "open" ? "#22c55e" : C.muted,
                 boxShadow: priceStatus === "open" ? "0 0 10px #22c55e" : "none",
                 transition: "all .3s",
               }}
@@ -332,13 +356,26 @@ export default function PricesPage({ api }) {
         {(!mobile || showWatchlist) && <div
           style={{
             display: "flex",
-            flexDirection: mobile ? "row" : "row",
+            flexDirection: "row",
+            flexWrap: "wrap",
             gap: 20,
+            // A fixed floor here — not just a max — stops the panel from
+            // collapsing to near-zero height for an instant every time the
+            // price list is momentarily empty (switching watchlist pairs,
+            // a reconnect, the "active trades" filter briefly matching
+            // nothing) and then snapping back once data arrives. That
+            // collapse-and-snap was the "keeps disappearing" jank.
+            minHeight: mobile ? 160 : 320,
             maxHeight: mobile ? "60vh" : "90vh",
             overflowY: "auto",
             paddingRight: 4,
           }}
         >
+          {prices.length === 0 && (
+            <div style={{ color: C.muted, fontSize: 12, padding: "8px 2px" }}>
+              {watchlistFilter === "active" ? "No pairs with an open trade right now." : "Loading prices…"}
+            </div>
+          )}
           {(watchlistFilter === "active" ? prices.filter(p => allOpenTrades.some(t => t.pair === p.pair)) : prices).map((p) => {
             const up = p.direction === "up";
 
@@ -354,17 +391,17 @@ export default function PricesPage({ api }) {
                   minWidth: "200px",
                   background:
                     selP === p.pair
-                      ? "linear-gradient(135deg,#172554,#0f172a)"
-                      : "#0f172a",
+                      ? `linear-gradient(135deg, ${C.gold}22, ${C.surf2})`
+                      : C.surf2,
 
                   border:
                     selP === p.pair
-                      ? "1px solid #facc15"
-                      : "1px solid #1e293b",
+                      ? `1px solid ${C.gold}`
+                      : `1px solid ${C.border}`,
 
                   boxShadow:
                     selP === p.pair
-                      ? "0 0 18px rgba(250,204,21,.15)"
+                      ? `0 0 18px ${C.gold}26`
                       : "none",
                 }}
               >
@@ -380,7 +417,7 @@ export default function PricesPage({ api }) {
                     style={{
                       fontWeight: 700,
                       fontSize: 15,
-                      color: "#fff",
+                      color: C.text,
                     }}
                   >
                     {p.pair}
@@ -402,7 +439,7 @@ export default function PricesPage({ api }) {
                     fontFamily: "monospace",
                     fontSize: 24,
                     fontWeight: 800,
-                    color: "#f8fafc",
+                    color: C.text,
                     marginBottom: 12,
                   }}
                 >
@@ -419,12 +456,12 @@ export default function PricesPage({ api }) {
                 >
                   <div
                     style={{
-                      background: "#111827",
+                      background: C.surf2,
                       padding: 8,
                       borderRadius: 8,
                     }}
                   >
-                    <div style={{ color: "#94a3b8" }}>Bid</div>
+                    <div style={{ color: C.muted }}>Bid</div>
                     <div style={{ color: "#22c55e" }}>
                       {fp(p.bid, pairDecimals(p.pair))}
                     </div>
@@ -432,12 +469,12 @@ export default function PricesPage({ api }) {
 
                   <div
                     style={{
-                      background: "#111827",
+                      background: C.surf2,
                       padding: 8,
                       borderRadius: 8,
                     }}
                   >
-                    <div style={{ color: "#94a3b8" }}>Ask</div>
+                    <div style={{ color: C.muted }}>Ask</div>
                     <div style={{ color: "#ef4444" }}>
                       {fp(p.ask, pairDecimals(p.pair))}
                     </div>
@@ -449,7 +486,7 @@ export default function PricesPage({ api }) {
                     marginTop: 10,
                     display: "flex",
                     justifyContent: "space-between",
-                    color: "#64748b",
+                    color: C.muted,
                     fontSize: 11,
                   }}
                 >
@@ -465,8 +502,8 @@ export default function PricesPage({ api }) {
       {/* ───────── RIGHT CHART PANEL ───────── */}
       <Card
         style={{
-          background: "#0b1723",
-          border: "1px solid #1f2937",
+          background: C.surf,
+          border: `1px solid ${C.border}`,
           padding: mobile ? 12 : 18,
         }}
       >
@@ -487,15 +524,15 @@ export default function PricesPage({ api }) {
               style={{
                 fontSize: 26,
                 fontWeight: 800,
-                color: "#fff",
+                color: C.text,
               }}
             >
-              {selP} <Badge col={C.gold}>{activeTrades.length} active trades</Badge> <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>· {pairDecimals(selP)}dp</span>
+              {selP} <Badge col={C.gold}>{activeTrades.length} active trades</Badge> <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>· {pairDecimals(selP)}dp</span>
             </div>
 
             <div
               style={{
-                color: "#94a3b8",
+                color: C.muted,
                 marginTop: 4,
                 fontSize: 13,
               }}
@@ -520,8 +557,8 @@ export default function PricesPage({ api }) {
                   style={{
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "8px 14px",
-                    background: "#111827", border: `1px solid ${chartPairPickerOpen ? C.gold : "#1e293b"}`,
-                    borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 700,
+                    background: C.surf2, border: `1px solid ${chartPairPickerOpen ? C.gold : C.border}`,
+                    borderRadius: 6, color: C.text, fontSize: 12, fontWeight: 700,
                     cursor: "pointer", minWidth: 110, justifyContent: "space-between",
                   }}
                 >
@@ -537,17 +574,17 @@ export default function PricesPage({ api }) {
                 <div style={{
                   position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 91,
                   width: mobile ? "88vw" : 340, maxHeight: "70vh", display: "flex", flexDirection: "column",
-                  background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12,
+                  background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 12,
                   boxShadow: "0 12px 32px rgba(0,0,0,0.6)", overflow: "hidden",
                 }}>
-                  <div style={{ padding: 12, borderBottom: "1px solid #1e293b" }}>
+                  <div style={{ padding: 12, borderBottom: `1px solid ${C.border}` }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 8 }}>SELECT PAIR</div>
                     <input
                       autoFocus
                       value={chartPairQuery}
                       onChange={(e) => setChartPairQuery(e.target.value)}
                       placeholder="Search pairs…"
-                      style={{ width: "100%", padding: "8px 10px", background: "#111827", border: "1px solid #1e293b", borderRadius: 6, color: "#fff", fontSize: 12, boxSizing: "border-box" }}
+                      style={{ width: "100%", padding: "8px 10px", background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }}
                     />
                   </div>
                   <div style={{ overflowY: "auto", padding: 8 }}>
@@ -557,17 +594,17 @@ export default function PricesPage({ api }) {
                         onClick={() => { setSelP(p); setChartPairPickerOpen(false); setChartPairQuery(""); }}
                         style={{
                           padding: "9px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600,
-                          color: p === selP ? C.gold : "#e2e8f0",
-                          background: p === selP ? "rgba(250,204,21,0.08)" : "transparent",
+                          color: p === selP ? C.gold : C.text,
+                          background: p === selP ? `${C.gold}14` : "transparent",
                         }}
-                        onMouseEnter={(e) => { if (p !== selP) e.currentTarget.style.background = "#111827"; }}
+                        onMouseEnter={(e) => { if (p !== selP) e.currentTarget.style.background = C.surf2; }}
                         onMouseLeave={(e) => { if (p !== selP) e.currentTarget.style.background = "transparent"; }}
                       >
                         {p}
                       </div>
                     ))}
                     {PAIRS.filter((p) => p.includes(chartPairQuery.trim().toUpperCase())).length === 0 && (
-                      <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 12 }}>No pairs match "{chartPairQuery}"</div>
+                      <div style={{ padding: 20, textAlign: "center", color: C.muted, fontSize: 12 }}>No pairs match "{chartPairQuery}"</div>
                     )}
                   </div>
                 </div>
@@ -582,8 +619,8 @@ export default function PricesPage({ api }) {
                     style={{
                       display: "flex", alignItems: "center", gap: 6,
                       padding: "8px 14px",
-                      background: "#111827", border: `1px solid ${tfPickerOpen ? C.gold : "#1e293b"}`,
-                      borderRadius: 6, color: "#fff", fontSize: 12, fontWeight: 700,
+                      background: C.surf2, border: `1px solid ${tfPickerOpen ? C.gold : C.border}`,
+                      borderRadius: 6, color: C.text, fontSize: 12, fontWeight: 700,
                       cursor: "pointer", minWidth: 70, justifyContent: "space-between",
                     }}
                   >
@@ -598,7 +635,7 @@ export default function PricesPage({ api }) {
                 <div onClick={() => setTfPickerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 90, background: mobile ? "rgba(0,0,0,0.5)" : "transparent" }} />
                 <div style={{
                   position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 91,
-                  background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12,
+                  background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 12,
                   padding: 14, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6,
                   boxShadow: "0 12px 32px rgba(0,0,0,0.6)", width: mobile ? "80vw" : 260,
                 }}>
@@ -609,9 +646,9 @@ export default function PricesPage({ api }) {
                       onClick={() => { setSelTf(tf); setTfPickerOpen(false); }}
                       style={{
                         padding: "12px 4px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
-                        border: `1px solid ${tf === selTf ? C.gold : "#1e293b"}`,
-                        background: tf === selTf ? `${C.gold}22` : "#111827",
-                        color: tf === selTf ? C.gold : "#cbd5e1",
+                        border: `1px solid ${tf === selTf ? C.gold : C.border}`,
+                        background: tf === selTf ? `${C.gold}22` : C.surf2,
+                        color: tf === selTf ? C.gold : C.text,
                       }}
                     >
                       {tf}
@@ -647,20 +684,25 @@ export default function PricesPage({ api }) {
                 Tracking copy trade #{copyTrade.id} — {copyTrade.pair} {copyTrade.direction} · {(copyTrade.status || "").toUpperCase()}
                 <Badge col={copyTrade.execution_mode === "mt5" ? C.purple : C.muted}>{copyTrade.execution_mode === "mt5" ? "MT5 · REAL" : "SIMULATED"}</Badge>
               </div>
-              {copyTrade.status === "open" && (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Btn col={C.gold} ghost onClick={() => setAdjustOpen(v => !v)} style={{ fontSize: 11, padding: "4px 10px" }}>Adjust SL/TP</Btn>
-                  <Btn col={C.red} onClick={closeCopyTrade} disabled={ctBusy} style={{ fontSize: 11, padding: "4px 10px" }}>
-                    {ctBusy ? "…" : "Close"}
-                  </Btn>
-                </div>
-              )}
+              <div style={{ display: "flex", gap: 6 }}>
+                {copyTrade.status === "open" && (
+                  <>
+                    <Btn col={C.gold} ghost onClick={() => setAdjustOpen(v => !v)} style={{ fontSize: 11, padding: "4px 10px" }}>Adjust SL/TP</Btn>
+                    <Btn col={C.red} onClick={closeCopyTrade} disabled={ctBusy} style={{ fontSize: 11, padding: "4px 10px" }}>
+                      {ctBusy ? "…" : "Close"}
+                    </Btn>
+                  </>
+                )}
+                <Btn col={C.muted} ghost onClick={deselectTrade} title="Stop tracking this trade" style={{ fontSize: 11, padding: "4px 10px" }}>
+                  ✕ Deselect
+                </Btn>
+              </div>
             </div>
 
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "#94a3b8" }}>
-              <span>Entry: <strong style={{ color: "#fff" }}>{fp(copyTrade.entry_price, pairDecimals(copyTrade.pair))}</strong></span>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", color: C.muted }}>
+              <span>Entry: <strong style={{ color: C.text }}>{fp(copyTrade.entry_price, pairDecimals(copyTrade.pair))}</strong></span>
               {copyTrade.status === "open" && copyTrade.current_price && (
-                <span>Current: <strong style={{ color: "#fff" }}>{fp(copyTrade.current_price, pairDecimals(copyTrade.pair))}</strong></span>
+                <span>Current: <strong style={{ color: C.text }}>{fp(copyTrade.current_price, pairDecimals(copyTrade.pair))}</strong></span>
               )}
               <span>SL: <strong style={{ color: C.red }}>{fp(copyTrade.stop_loss, pairDecimals(copyTrade.pair))}</strong></span>
               <span>TP: <strong style={{ color: C.green }}>{fp(copyTrade.take_profit, pairDecimals(copyTrade.pair))}</strong></span>
@@ -676,11 +718,11 @@ export default function PricesPage({ api }) {
               <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ width: 130 }}>
                   <FG label="New SL"><input type="number" step="0.00001" value={adjSl} onChange={e => setAdjSl(e.target.value)}
-                    style={{ width: "100%", padding: 7, background: "#111827", border: "1px solid #1e293b", borderRadius: 6, color: "#fff", fontSize: 12, boxSizing: "border-box" }} /></FG>
+                    style={{ width: "100%", padding: 7, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG>
                 </div>
                 <div style={{ width: 130 }}>
                   <FG label="New TP"><input type="number" step="0.00001" value={adjTp} onChange={e => setAdjTp(e.target.value)}
-                    style={{ width: "100%", padding: 7, background: "#111827", border: "1px solid #1e293b", borderRadius: 6, color: "#fff", fontSize: 12, boxSizing: "border-box" }} /></FG>
+                    style={{ width: "100%", padding: 7, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG>
                 </div>
                 <Btn col={C.gold} onClick={adjustCopyTrade} disabled={ctBusy}>{ctBusy ? "…" : "Save"}</Btn>
               </div>
@@ -689,20 +731,20 @@ export default function PricesPage({ api }) {
         )}
 
         {tradePanel && (
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+          <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
               <div style={{ width: 90 }}><FG label="Lot size"><input type="number" step="0.01" value={lot} onChange={e => setLot(Number(e.target.value))}
-                style={{ width: "100%", padding: 8, background: "#111827", border: "1px solid #1e293b", borderRadius: 6, color: "#fff", fontSize: 12, boxSizing: "border-box" }} /></FG></div>
+                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG></div>
               <div style={{ width: 90 }}><FG label="SL pips"><input type="number" value={slPips} onChange={e => setSlPips(Number(e.target.value))}
-                style={{ width: "100%", padding: 8, background: "#111827", border: "1px solid #1e293b", borderRadius: 6, color: "#fff", fontSize: 12, boxSizing: "border-box" }} /></FG></div>
+                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG></div>
               <div style={{ width: 90 }}><FG label="TP pips"><input type="number" value={tpPips} onChange={e => setTpPips(Number(e.target.value))}
-                style={{ width: "100%", padding: 8, background: "#111827", border: "1px solid #1e293b", borderRadius: 6, color: "#fff", fontSize: 12, boxSizing: "border-box" }} /></FG></div>
+                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG></div>
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                 <Btn col={C.green} onClick={() => placeQuickTrade("BUY")} disabled={tradeBusy}>{tradeBusy ? "…" : "BUY"}</Btn>
                 <Btn col={C.red} onClick={() => placeQuickTrade("SELL")} disabled={tradeBusy}>{tradeBusy ? "…" : "SELL"}</Btn>
               </div>
             </div>
-            <div style={{ fontSize: 10, color: "#64748b", marginBottom: 6 }}>
+            <div style={{ fontSize: 10, color: C.muted, marginBottom: 6 }}>
               Fills at the current market price and deducts margin from your balance immediately — this is a real position, not a preview.
             </div>
             {tradeMsg && <OkBox msg={tradeMsg} />}
@@ -719,17 +761,18 @@ export default function PricesPage({ api }) {
               return (
                 <button
                   key={t.id}
-                  onClick={() => selectTrade(t)}
+                  onClick={() => (isSel ? deselectTrade() : selectTrade(t))}
+                  title={isSel ? "Click to stop tracking" : "Click to track this trade's SL/TP on the chart"}
                   style={{
                     display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
                     padding: "6px 12px", borderRadius: 999,
-                    background: isSel ? `${C.gold}1f` : "#0f172a",
-                    border: `1px solid ${isSel ? C.gold : "#1e293b"}`,
-                    color: "#e2e8f0", fontSize: 12,
+                    background: isSel ? `${C.gold}1f` : C.surf2,
+                    border: `1px solid ${isSel ? C.gold : C.border}`,
+                    color: C.text, fontSize: 12,
                   }}
                 >
                   <span style={{ color: up ? C.green : C.red, fontWeight: 800 }}>{up ? "▲" : "▼"} {t.direction}</span>
-                  <span style={{ color: "#64748b" }}>{t.lot_size} lot</span>
+                  <span style={{ color: C.muted }}>{t.lot_size} lot</span>
                   <span style={{ fontFamily: "monospace" }}>{fp(t.entry_price, pairDecimals(t.pair))}</span>
                   {isSel && <span style={{ fontSize: 10, color: C.gold, fontWeight: 700 }}>· tracking ⇕</span>}
                 </button>
@@ -764,7 +807,7 @@ export default function PricesPage({ api }) {
               <div style={{
                 position: "absolute", top: 10, right: 10, zIndex: 10, display: "flex",
                 alignItems: "center", gap: 6,
-                background: "rgba(7,16,24,0.9)", border: `1px solid ${C.border}`,
+                background: `${C.surf}E6`, border: `1px solid ${C.border}`,
                 borderRadius: 999, padding: "5px 10px",
               }}>
                 <div style={{
@@ -772,32 +815,34 @@ export default function PricesPage({ api }) {
                   border: `2px solid ${C.border}`, borderTopColor: C.gold,
                   animation: "spin 0.8s linear infinite",
                 }} />
-                <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>Updating…</span>
+                <span style={{ fontSize: 10, color: C.muted, fontWeight: 600 }}>Updating…</span>
               </div>
             )}
-            <CandleChart1
-              bars={bars}
-              resetKey={`${selP}_${selTf}`}
-              pair={selP}
-              timeframe={selTf}
-              api={api}
-              onTfClick={() => setTfPickerOpen(true)}
-              height={mobile ? 460 : 560}
-              entry={copyTrade?.entry_price}
-              sl={copyTrade?.stop_loss}
-              tp={copyTrade?.take_profit}
-              markers={markers}
-              supportResistance={sr}
-              trendline={trendline}
-              liveCandle={liveCandle}
-              live={candleStatus === "open"}
-              indicators={ind}
-              draggableSlTp={!!copyTrade && copyTrade.status === "open"}
-              onAdjustSlTp={adjustCopyTradeFromChart}
-              trades={activeTrades}
-              selectedTradeId={selectedTradeId}
-              onTradeSelect={selectTrade}
-            />
+            <div style={{ opacity: busy ? 0.45 : 1, transition: "opacity 0.25s ease" }}>
+              <CandleChart1
+                bars={bars}
+                resetKey={`${selP}_${selTf}`}
+                pair={selP}
+                timeframe={selTf}
+                api={api}
+                onTfClick={() => setTfPickerOpen(true)}
+                height={mobile ? 460 : 560}
+                entry={copyTrade?.entry_price}
+                sl={copyTrade?.stop_loss}
+                tp={copyTrade?.take_profit}
+                markers={markers}
+                supportResistance={sr}
+                trendline={trendline}
+                liveCandle={liveCandle}
+                live={candleStatus === "open"}
+                indicators={ind}
+                draggableSlTp={!!copyTrade && copyTrade.status === "open"}
+                onAdjustSlTp={adjustCopyTradeFromChart}
+                trades={activeTrades}
+                selectedTradeId={selectedTradeId}
+                onTradeSelect={(t) => (t ? selectTrade(t) : deselectTrade())}
+              />
+            </div>
           </div>
         </ChartWrap>
       </Card>
@@ -823,9 +868,9 @@ function IndToggle({ on, onClick, colors, label }) {
         display: "flex",
         alignItems: "center",
         gap: 7,
-        color: on ? "#cbd5e1" : "#475569",
-        background: on ? "#111827" : "transparent",
-        border: `1px solid ${on ? "#1e293b" : "transparent"}`,
+        color: on ? C.text : C.muted,
+        background: on ? C.surf2 : "transparent",
+        border: `1px solid ${on ? C.border : "transparent"}`,
         borderRadius: 999,
         padding: "5px 10px",
         cursor: "pointer",
@@ -834,7 +879,7 @@ function IndToggle({ on, onClick, colors, label }) {
     >
       <span style={{ display: "flex", gap: 2 }}>
         {colors.map((c, i) => (
-          <span key={i} style={{ width: 10, height: 3, borderRadius: 999, background: on ? c : "#334155" }} />
+          <span key={i} style={{ width: 10, height: 3, borderRadius: 999, background: on ? c : C.border }} />
         ))}
       </span>
       {label}

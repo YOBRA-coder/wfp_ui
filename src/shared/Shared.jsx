@@ -367,6 +367,31 @@ const OkBox = ({ msg }) =>
     </div>
   ) : null;
 
+// ─── Toggle switch ───────────────────────────────────────────────────────────
+const Toggle = ({ checked, onChange, disabled = false }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    disabled={disabled}
+    onClick={() => !disabled && onChange(!checked)}
+    style={{
+      width: 38, height: 22, borderRadius: 99, border: "none", flexShrink: 0,
+      background: checked ? C.gold : C.border,
+      position: "relative", cursor: disabled ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.5 : 1, transition: "background .15s", padding: 0,
+    }}
+  >
+    <span
+      style={{
+        position: "absolute", top: 2, left: checked ? 18 : 2,
+        width: 18, height: 18, borderRadius: "50%", background: "#fff",
+        transition: "left .15s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+      }}
+    />
+  </button>
+);
+
 // ─── Grid ────────────────────────────────────────────────────────────────────
 const Grid = ({
   cols = "1fr 1fr",
@@ -528,4 +553,5 @@ export {
   Modal,
   ProgressBar,
   Row,
+  Toggle,
 };

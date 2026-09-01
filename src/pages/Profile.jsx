@@ -1,9 +1,18 @@
 // ─── Profile / MT5 ────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback } from "react";
 import { C } from "../utils/constants.jsx";
-import { Card, SectionTitle, useMobile, Badge, Row, Grid, Btn, FG, Inp, Sel, Modal, OkBox, InfoBox, ErrBox } from "../shared/Shared.jsx";
-import { ago, fp, f1 } from "../utils/utils.js";
+import { Card, SectionTitle, useMobile, Badge, Grid, Btn, FG, Inp, OkBox, InfoBox, ErrBox, Toggle } from "../shared/Shared.jsx";
+import { ago } from "../utils/utils.js";
 import { API } from "../api/Api.jsx";
+
+const NOTIF_CATEGORY_INFO = {
+  signal:       { label: "New signals",        hint: "A new trade signal is generated for a pair you follow" },
+  copy:         { label: "Copy trading",       hint: "A provider's trade copies to you, or needs your approval" },
+  trade_closed: { label: "Trade closed",       hint: "One of your open positions closes (SL, TP, or manual)" },
+  billing:      { label: "Billing & payments", hint: "Deposits, withdrawals, subscription renewals" },
+  education:    { label: "Education",          hint: "New courses or lessons become available" },
+  system:       { label: "System",             hint: "Account and platform announcements" },
+};
 
 export default function Profile({ api, user, setUser }) {
   const [form, setForm] = useState({ bio: user?.bio || "", broker: user?.broker || "", mt5_login: user?.mt5_login || "", mt5_server: user?.mt5_server || "" });
@@ -14,6 +23,25 @@ export default function Profile({ api, user, setUser }) {
   const [bridgeBusy, setBridgeBusy] = useState(false);
   const [bridgeErr, setBridgeErr] = useState("");
   const [copied, setCopied] = useState(false);
+  const [notifCats, setNotifCats] = useState(null); // null = loading
+  const [notifBusy, setNotifBusy] = useState(false);
+
+  useEffect(() => {
+    api.get("/prefs/notifications").then((d) => setNotifCats(d.categories || {})).catch(() => setNotifCats({}));
+  }, [api]);
+
+  const toggleNotifCategory = async (key, value) => {
+    const prev = notifCats;
+    setNotifCats((c) => ({ ...c, [key]: value })); // optimistic — feels instant
+    setNotifBusy(true);
+    try {
+      await api.put("/prefs/notifications", { categories: { [key]: value } });
+    } catch {
+      setNotifCats(prev); // roll back on failure
+    } finally {
+      setNotifBusy(false);
+    }
+  };
 
   const loadBridge = useCallback(() => {
     api.get("/bridge/status").then(setBridge).catch(() => {});
@@ -123,6 +151,41 @@ export default function Profile({ api, user, setUser }) {
           </InfoBox>
         </Card>
       </Grid>
+
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+          <SectionTitle>Notification Preferences</SectionTitle>
+          {notifBusy && <span style={{ fontSize: 10, color: C.muted }}>Saving…</span>}
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>
+          Choose what shows up in your notification bell. This is separate from the email alerts toggle in Settings —
+          turning a category off here stops it in-app too, not just by email.
+        </div>
+        {notifCats === null ? (
+          <div style={{ color: C.muted, fontSize: 12 }}>Loading…</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {Object.entries(NOTIF_CATEGORY_INFO).map(([key, info]) => (
+              <label
+                key={key}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "9px 2px", borderBottom: `1px solid ${C.border}20`, cursor: "pointer",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{info.label}</div>
+                  <div style={{ fontSize: 10.5, color: C.muted, marginTop: 1 }}>{info.hint}</div>
+                </div>
+                <Toggle
+                  checked={notifCats[key] !== false}
+                  onChange={(v) => toggleNotifCategory(key, v)}
+                />
+              </label>
+            ))}
+          </div>
+        )}
+      </Card>
 
       <Card style={{ marginTop: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
