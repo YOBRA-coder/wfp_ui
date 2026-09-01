@@ -101,7 +101,11 @@ export default function PricesPage({ api }) {
         setCopyTrade(t);
         setAdjSl(String(t.stop_loss ?? ""));
         setAdjTp(String(t.take_profit ?? ""));
+      }else {
+        setCopyTrade(null);
+        setSelectedTradeId(null);
       }
+
     }).catch(() => { });
   }, [selectedTradeId, api]);
 
@@ -674,18 +678,18 @@ export default function PricesPage({ api }) {
           </div>
         </div>
 
-        {selectedTradeId && (
+        {selectedTradeId && copyTrade && (
           <div style={{
             background: `${C.gold}14`, border: `1px solid ${C.gold}40`, borderRadius: 8,
             padding: 12, marginBottom: 16, fontSize: 12
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
-                Tracking copy trade #{copyTrade.id} — {copyTrade.pair} {copyTrade.direction} · {(copyTrade.status || "").toUpperCase()}
-                <Badge col={copyTrade.execution_mode === "mt5" ? C.purple : C.muted}>{copyTrade.execution_mode === "mt5" ? "MT5 · REAL" : "SIMULATED"}</Badge>
+                Tracking copy trade #{copyTrade?.id} — {copyTrade?.pair} {copyTrade?.direction} · {(copyTrade?.status || "").toUpperCase()}
+                <Badge col={copyTrade?.execution_mode === "mt5" ? C.purple : C.muted}>{copyTrade?.execution_mode === "mt5" ? "MT5 · REAL" : "SIMULATED"}</Badge>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
-                {copyTrade.status === "open" && (
+                {copyTrade?.status === "open" && (
                   <>
                     <Btn col={C.gold} ghost onClick={() => setAdjustOpen(v => !v)} style={{ fontSize: 11, padding: "4px 10px" }}>Adjust SL/TP</Btn>
                     <Btn col={C.red} onClick={closeCopyTrade} disabled={ctBusy} style={{ fontSize: 11, padding: "4px 10px" }}>
@@ -700,21 +704,21 @@ export default function PricesPage({ api }) {
             </div>
 
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap", color: C.muted }}>
-              <span>Entry: <strong style={{ color: C.text }}>{fp(copyTrade.entry_price, pairDecimals(copyTrade.pair))}</strong></span>
-              {copyTrade.status === "open" && copyTrade.current_price && (
-                <span>Current: <strong style={{ color: C.text }}>{fp(copyTrade.current_price, pairDecimals(copyTrade.pair))}</strong></span>
+              <span>Entry: <strong style={{ color: C.text }}>{fp(copyTrade?.entry_price, pairDecimals(copyTrade?.pair))}</strong></span>
+              {copyTrade?.status === "open" && copyTrade?.current_price && (
+                <span>Current: <strong style={{ color: C.text }}>{fp(copyTrade?.current_price, pairDecimals(copyTrade?.pair))}</strong></span>
               )}
-              <span>SL: <strong style={{ color: C.red }}>{fp(copyTrade.stop_loss, pairDecimals(copyTrade.pair))}</strong></span>
-              <span>TP: <strong style={{ color: C.green }}>{fp(copyTrade.take_profit, pairDecimals(copyTrade.pair))}</strong></span>
-              <span>{copyTrade.status === "open" ? "Floating P&L" : "P&L"}: <strong style={{ color: copyTrade.pnl_usd >= 0 ? C.green : C.red }}>
-                {usd(copyTrade.pnl_usd)}{copyTrade.pnl_pips != null ? ` (${copyTrade.pnl_pips >= 0 ? "+" : ""}${copyTrade.pnl_pips}p)` : ""}
+              <span>SL: <strong style={{ color: C.red }}>{fp(copyTrade?.stop_loss, pairDecimals(copyTrade?.pair))}</strong></span>
+              <span>TP: <strong style={{ color: C.green }}>{fp(copyTrade?.take_profit, pairDecimals(copyTrade?.pair))}</strong></span>
+              <span>{copyTrade?.status === "open" ? "Floating P&L" : "P&L"}: <strong style={{ color: copyTrade?.pnl_usd >= 0 ? C.green : C.red }}>
+                {usd(copyTrade?.pnl_usd)}{copyTrade?.pnl_pips != null ? ` (${copyTrade?.pnl_pips >= 0 ? "+" : ""}${copyTrade?.pnl_pips}p)` : ""}
               </strong></span>
             </div>
 
             {ctMsg && <div style={{ marginTop: 8, color: C.gold }}>{ctMsg}</div>}
             <ErrBox msg={ctErr} />
 
-            {adjustOpen && copyTrade.status === "open" && (
+            {adjustOpen && copyTrade?.status === "open" && (
               <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ width: 130 }}>
                   <FG label="New SL"><input type="number" step="0.00001" value={adjSl} onChange={e => setAdjSl(e.target.value)}
