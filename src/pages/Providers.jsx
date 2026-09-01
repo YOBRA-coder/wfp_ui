@@ -73,6 +73,7 @@ export default function Providers({ api }) {
   const [sigBusy, setSigBusy] = useState(false);
   const [sigErr, setSigErr] = useState("");
   const [query, setQuery] = useState("");
+  const [sigOk, setSigOk] = useState("");
 
   const loadEarnings = () => {
     api.get("/providers/me/earnings").then(setEarnings).catch(() => setEarnings(null));
