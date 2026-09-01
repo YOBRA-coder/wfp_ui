@@ -357,7 +357,7 @@ export default function PricesPage({ api }) {
           style={{
             display: "flex",
             flexDirection: mobile ? "row" : "row",
-            flexWrap: "wrap",
+            //flexWrap: "wrap",
             gap: 20,
             // A fixed floor here — not just a max — stops the panel from
             // collapsing to near-zero height for an instant every time the
