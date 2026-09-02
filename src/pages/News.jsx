@@ -18,7 +18,7 @@ export default function News({ api }) {
 
   return (
     <div style={{ padding: mobile ? 12 : 20, marginBottom: 100, maxWidth: 720, margin: "0 auto" }}>
-      <SectionTitle>News <Icon name="rss" size={16} /></SectionTitle>
+      <SectionTitle>News ...  <Icon name="market" size={16} /></SectionTitle>
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, marginTop: -6 }}>
         Latest from the YobbyFX team and the wider market — every headline links to the original source.
       </div>
@@ -39,7 +39,7 @@ export default function News({ api }) {
         />
       </div>
 
-   {newsFeedEnabled && <NewsFeed api={api} limit={15} />}
+   {newsFeedEnabled && <NewsFeed api={api} limit={25} />}
     </div>
   );
 }
