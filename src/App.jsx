@@ -570,8 +570,6 @@ body{
                   element={
                     <News
                       api={api}
-                      user={user}
-                      setUser={setUser}
                     />
                   }
                 />

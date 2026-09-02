@@ -11,7 +11,7 @@ import { useModulePref } from "../utils/modulePrefs.js";
 
 
 
-export default function News() {
+export default function News({ api }) {
   const mobile = useMobile();
   const [query, setQuery] = useState("");
   const [newsFeedEnabled] = useModulePref("news_feed", true);
