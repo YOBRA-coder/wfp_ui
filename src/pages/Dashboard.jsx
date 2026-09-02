@@ -54,6 +54,8 @@ export default function Dashboard({ api }) {
     };
 
     const equityDelta = stats ? Number(stats.equity || 0) - Number(stats.balance || 0) : 0;
+    const OPEN_STATUSES = new Set(["open", "pending", "pending_bridge", "sent_to_bridge", "close_requested", "close_sent_to_bridge"]);
+    const openTrades = copies.filter(t => t.status !== "pending_approval" && OPEN_STATUSES.has(t.status));
 
     return (
         <div style={{ padding: mobile ? 12 : 22, maxWidth: 1400, margin: "0 auto", marginBottom: 100, boxSizing: "border-box" }}>
@@ -260,14 +262,14 @@ export default function Dashboard({ api }) {
                 <div>
                     <Card>
                         <SectionTitle>
-                            Active Copy Trades <Badge col={C.gold}>{copies.length}</Badge>
+                            Active Copy Trades <Badge col={C.gold}>{openTrades.length}</Badge>
                         </SectionTitle>
-                        {copies.length === 0 ? (
+                        {openTrades.length === 0 ? (
                             <div style={{ color: C.muted, fontSize: 12 }}>
-                                No copy trades — subscribe to a provider first
+                                No active copy trades — subscribe to a provider first.
                             </div>
                         ) : (
-                            copies.map((t) => (
+                            openTrades.map((t) => (
                                 <Row
                                     key={t.id}
                                     onClick={() => navigate(`/prices?pair=${t.pair}&copyTradeId=${t.id}`)}
