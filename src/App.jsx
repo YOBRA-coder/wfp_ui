@@ -305,7 +305,7 @@ body{
                     lineHeight: 1,
                   }}
                 >
-                  Forex<span style={{ color: C.gold }}>Pro</span>
+                  Yobby<span style={{ color: C.gold }}>Fx</span>
                 </div>
 
                 <div
@@ -405,11 +405,13 @@ body{
               {mobile ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <BrandMark size={19} color={C.text} accent={C.gold} />
+                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
                   <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-display)" }}>
-                    Forex<span style={{ color: C.gold }}>Pro</span>
+                    Yobby<span style={{ color: C.gold }}>Fx</span>
                   </div>
                   <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2, fontFamily: "var(--font-mono)" }}>
                     {clock}
+                  </div>
                   </div>
                 </div>
               ) : (
