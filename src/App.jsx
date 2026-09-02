@@ -18,6 +18,7 @@ import Notifications from "./pages/Notifications.jsx";
 import Settings from "./pages/Settings.jsx";
 import UserGuide from "./pages/UserGuide.jsx";
 import Ticker from "./components/Ticker.jsx";
+import News from "./pages/News.jsx";
 import { Btn } from "./shared/Shared.jsx";
 import { nowEAT } from "./utils/utils.js";
 import RiskDisclaimer from "./components/RiskDisclaimer.jsx";
@@ -407,6 +408,9 @@ body{
                   <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-display)" }}>
                     Forex<span style={{ color: C.gold }}>Pro</span>
                   </div>
+                  <div style={{ fontSize: 10.5, color: C.muted, marginTop: 2, fontFamily: "var(--font-mono)" }}>
+                    {clock}
+                  </div>
                 </div>
               ) : (
                 <div style={{ minWidth: 0 }}>
@@ -552,6 +556,17 @@ body{
                   path="/billing"
                   element={
                     <Billing
+                      api={api}
+                      user={user}
+                      setUser={setUser}
+                    />
+                  }
+                />
+
+                <Route
+                  path="/market-news"
+                  element={
+                    <News
                       api={api}
                       user={user}
                       setUser={setUser}
