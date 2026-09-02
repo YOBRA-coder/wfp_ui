@@ -18,7 +18,7 @@ export default function News({ api }) {
 
   return (
     <div style={{ padding: mobile ? 12 : 20, marginBottom: 100, maxWidth: 720, margin: "0 auto" }}>
-      <SectionTitle>News ...  <Icon name="market" size={16} /></SectionTitle>
+      <SectionTitle>News ...</SectionTitle>
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, marginTop: -6 }}>
         Latest from the YobbyFX team and the wider market — every headline links to the original source.
       </div>

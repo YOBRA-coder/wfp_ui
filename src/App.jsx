@@ -316,7 +316,7 @@ body{
                     marginTop: 3,
                   }}
                 >
-                  PROFESSIONAL PLATFORM
+                  PLATFORM
                 </div>
               </div>
             </div>
