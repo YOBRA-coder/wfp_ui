@@ -99,6 +99,15 @@ const paths = {
       <line x1="20" y1="20" x2="15.3" y2="15.3" />
     </>
   ),
+  market: (
+    <>
+      <path d="M2.5 6.5h19M2.5 12h19M2.5 17.5h19" />
+      <circle cx="8" cy="6.5" r="1.9" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="12" r="1.9" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="17.5" r="1.9" fill="currentColor" stroke="none" />
+    </>
+  ),
+
   chevronRight: <polyline points="9 5 15 12 9 19" />,
 };
 
