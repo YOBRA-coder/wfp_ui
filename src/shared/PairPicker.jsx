@@ -32,26 +32,26 @@ function PairPicker({ api, watchlist, onToggle, onClose }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", maxWidth: 480, maxHeight: "82vh", display: "flex", flexDirection: "column", background: "#0b1723", border: "1px solid #1f2937", borderRadius: 14, overflow: "hidden" }}
+        style={{ width: "100%", maxWidth: 480, maxHeight: "82vh", display: "flex", flexDirection: "column", background: C.surf, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" }}
       >
-        <div style={{ padding: 14, borderBottom: "1px solid #1f2937", display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ padding: 14, borderBottom: `1px solid ${C.border}`, display: "flex", gap: 10, alignItems: "center" }}>
           <input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search pairs (e.g. EUR, JPY, GOLD)…"
-            style={{ flex: 1, padding: "9px 12px", background: "#111827", border: "1px solid #1e293b", borderRadius: 8, color: "#fff", fontSize: 13, boxSizing: "border-box" }}
+            style={{ flex: 1, padding: "9px 12px", background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, boxSizing: "border-box" }}
           />
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
         <div style={{ overflowY: "auto", padding: 10 }}>
-          {loading && <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 12 }}>Loading pairs…</div>}
+          {loading && <div style={{ padding: 20, textAlign: "center", color: C.muted, fontSize: 12 }}>Loading pairs…</div>}
           {!loading && Object.keys(grouped).length === 0 && (
-            <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 12 }}>No pairs match "{query}"</div>
+            <div style={{ padding: 20, textAlign: "center", color: C.muted, fontSize: 12 }}>No pairs match "{query}"</div>
           )}
           {Object.entries(grouped).map(([group, pairs]) => (
             <div key={group} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, padding: "6px 6px 4px" }}>{group}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5, padding: "6px 6px 4px" }}>{group}</div>
               {pairs.map((p) => {
                 const active = watchlist.includes(p.symbol);
                 return (
@@ -63,21 +63,21 @@ function PairPicker({ api, watchlist, onToggle, onClose }) {
                       padding: "9px 10px", borderRadius: 8, cursor: "pointer",
                       background: active ? "rgba(250,204,21,0.08)" : "transparent",
                     }}
-                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "#111827"; }}
+                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = C.surf2; }}
                     onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
                   >
                     <div>
-                      <span style={{ color: "#fff", fontWeight: 600, fontSize: 13 }}>{p.symbol}</span>
-                      <span style={{ color: "#64748b", fontSize: 11, marginLeft: 8 }}>{p.display}</span>
+                      <span style={{ color: C.text, fontWeight: 600, fontSize: 13 }}>{p.symbol}</span>
+                      <span style={{ color: C.muted, fontSize: 11, marginLeft: 8 }}>{p.display}</span>
                     </div>
-                    <span style={{ fontSize: 16, color: active ? C.gold : "#334155" }}>{active ? "★" : "☆"}</span>
+                    <span style={{ fontSize: 16, color: active ? C.gold : C.border }}>{active ? "★" : "☆"}</span>
                   </div>
                 );
               })}
             </div>
           ))}
         </div>
-        <div style={{ padding: "10px 14px", borderTop: "1px solid #1f2937", fontSize: 11, color: "#64748b" }}>
+        <div style={{ padding: "10px 14px", borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
           {watchlist.length} pair{watchlist.length === 1 ? "" : "s"} in your watchlist · tap a pair to add or remove
         </div>
       </div>

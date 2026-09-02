@@ -56,6 +56,14 @@ export default function PricesPage({ api }) {
   const [tradeMsg, setTradeMsg] = useState("");
   const [tradeErr, setTradeErr] = useState("");
   const [copyTrade, setCopyTrade] = useState(null); // the specific trade Dashboard linked here to show progress for
+  // Was no way at all to send a quick trade to a real MT5 account — this
+  // panel could only ever place the app's own simulated/paper trade, even
+  // for a user with their MT5 bridge connected and linked. /trades/quick
+  // already accepted an execute_live flag on the backend; it just had
+  // nothing in the UI wired to it.
+  const [bridgeReady, setBridgeReady] = useState(false);
+  const [executeLive, setExecuteLive] = useState(false);
+  useEffect(() => { api.get("/bridge/status").then(d => setBridgeReady(!!d.has_token)).catch(() => {}); }, [api]);
   const loadChartRef = useRef(null);
   const mobileRaw = useMobile();
   // Guards against the Live Markets panel flickering: if useMobile() flips
@@ -232,7 +240,12 @@ export default function PricesPage({ api }) {
   const loadChart = useCallback(async () => {
     setBusy(true);
     try {
-      const d = await api.get(`/prices/chart?pair=${selP}&timeframe=${selTf}&candles=150`);
+      // Was capped at 150 — on an hourly chart that's only ~6 days, and far
+      // less on lower timeframes (M15 was only ~1.5 days), which read as "I
+      // can only see 2-3 days of history." lightweight-charts (the library
+      // driving this canvas) comfortably handles a few thousand candles, so
+      // request close to what the backend will serve in one call.
+      const d = await api.get(`/prices/chart?pair=${selP}&timeframe=${selTf}&candles=1500`);
       setBars(d.candles || []);
       setMarkers(d.markers || []);
       setSr(d.support_resistance || []);
@@ -265,8 +278,13 @@ export default function PricesPage({ api }) {
   const placeQuickTrade = async (direction) => {
     setTradeBusy(true); setTradeErr(""); setTradeMsg("");
     try {
-      const res = await api.post("/trades/quick", { pair: selP, direction, lot_size: lot, sl_pips: slPips, tp_pips: tpPips });
-      setTradeMsg(`✓ ${direction} ${selP} placed at ${res.entry_price} (SL ${res.stop_loss} / TP ${res.take_profit})`);
+      const res = await api.post("/trades/quick", {
+        pair: selP, direction, lot_size: lot, sl_pips: slPips, tp_pips: tpPips,
+        execute_live: executeLive && bridgeReady,
+      });
+      setTradeMsg(res.execution_mode === "mt5"
+        ? `✓ ${direction} ${selP} sent to your MT5 terminal — it'll confirm shortly.`
+        : `✓ ${direction} ${selP} placed at ${res.entry_price} (SL ${res.stop_loss} / TP ${res.take_profit})`);
       setTimeout(() => setTradeMsg(""), 6000);
     } catch (e) { setTradeErr(e.message); }
     finally { setTradeBusy(false); }
@@ -737,19 +755,34 @@ export default function PricesPage({ api }) {
         {tradePanel && (
           <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 10, padding: 14, marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              {/* Centered value text in these three fields — was left-aligned
+                  (the browser default for number inputs), which read oddly
+                  for a compact trade-entry ticket where BUY/SELL + lot size
+                  are meant to sit as a tight, glanceable row. */}
               <div style={{ width: 90 }}><FG label="Lot size"><input type="number" step="0.01" value={lot} onChange={e => setLot(Number(e.target.value))}
-                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG></div>
+                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} /></FG></div>
               <div style={{ width: 90 }}><FG label="SL pips"><input type="number" value={slPips} onChange={e => setSlPips(Number(e.target.value))}
-                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG></div>
+                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} /></FG></div>
               <div style={{ width: 90 }}><FG label="TP pips"><input type="number" value={tpPips} onChange={e => setTpPips(Number(e.target.value))}
-                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, boxSizing: "border-box" }} /></FG></div>
+                style={{ width: "100%", padding: 8, background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 12, textAlign: "center", boxSizing: "border-box" }} /></FG></div>
               <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                 <Btn col={C.green} onClick={() => placeQuickTrade("BUY")} disabled={tradeBusy}>{tradeBusy ? "…" : "BUY"}</Btn>
                 <Btn col={C.red} onClick={() => placeQuickTrade("SELL")} disabled={tradeBusy}>{tradeBusy ? "…" : "SELL"}</Btn>
               </div>
             </div>
+            {/* MT5-live option — was no way to send this straight to a real MT5
+                account, only ever the app's own simulated trade. */}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, cursor: bridgeReady ? "pointer" : "not-allowed", opacity: bridgeReady ? 1 : 0.55 }}>
+              <input type="checkbox" checked={executeLive && bridgeReady} disabled={!bridgeReady}
+                     onChange={e => setExecuteLive(e.target.checked)} />
+              <span style={{ fontSize: 11, color: executeLive && bridgeReady ? C.gold : C.muted, fontWeight: executeLive && bridgeReady ? 700 : 400 }}>
+                Execute live on my MT5 account {!bridgeReady && "(connect your MT5 bridge in Profile first)"}
+              </span>
+            </label>
             <div style={{ fontSize: 10, color: C.muted, marginBottom: 6 }}>
-              Fills at the current market price and deducts margin from your balance immediately — this is a real position, not a preview.
+              {executeLive && bridgeReady
+                ? "Sent straight to your MT5 terminal for real execution — no app-side margin is reserved for this one."
+                : "Fills at the current market price and deducts margin from your balance immediately — this is a real position, not a preview."}
             </div>
             {tradeMsg && <OkBox msg={tradeMsg} />}
             <ErrBox msg={tradeErr} />

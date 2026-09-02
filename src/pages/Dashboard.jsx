@@ -216,13 +216,38 @@ export default function Dashboard({ api }) {
                                 <Row
                                     key={s.id}
                                     onClick={() => navigate(`/signals?id=${s.id}`)}
-                                    style={{ display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                                    // Was forcing flexDirection:"row" unconditionally, which
+                                    // overrode Row's own mobile-responsive default (column
+                                    // stacking) — cramming pair/direction/timeframe/entry/
+                                    // confidence into one un-wrapped line on a narrow phone
+                                    // screen, which is what read as "not arranged well."
+                                    // Now it only forces the row layout on wider screens and
+                                    // lets Row stack it on mobile like everywhere else.
+                                    style={mobile
+                                      ? { cursor: "pointer" }
+                                      : { display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
                                 >
-                                    <strong style={{ flex: 1, fontSize: 12 }}>{s.pair}</strong>
-                                    <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
-                                    <Badge col={C.muted}>{s.timeframe}</Badge>
-                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(s.entry_price)}</span>
-                                    <span style={{ color: C.gold, fontSize: 11 }}>{s.confidence}%</span>
+                                    {mobile ? (
+                                        <>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "space-between" }}>
+                                                <strong style={{ fontSize: 12 }}>{s.pair}</strong>
+                                                <span style={{ color: C.gold, fontSize: 11 }}>{s.confidence}%</span>
+                                            </div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                                <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
+                                                <Badge col={C.muted}>{s.timeframe}</Badge>
+                                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(s.entry_price)}</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <strong style={{ flex: 1, fontSize: 12 }}>{s.pair}</strong>
+                                            <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
+                                            <Badge col={C.muted}>{s.timeframe}</Badge>
+                                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(s.entry_price)}</span>
+                                            <span style={{ color: C.gold, fontSize: 11 }}>{s.confidence}%</span>
+                                        </>
+                                    )}
                                 </Row>
                             ))
                         )}
@@ -246,16 +271,40 @@ export default function Dashboard({ api }) {
                                 <Row
                                     key={t.id}
                                     onClick={() => navigate(`/prices?pair=${t.pair}&copyTradeId=${t.id}`)}
-                                    style={{ display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                                    // Same fix as Latest Signals above — this was forcing a
+                                    // single un-wrapped row for 6 fields, which is what broke
+                                    // on mobile. Stack into two lines there instead.
+                                    style={mobile
+                                      ? { cursor: "pointer" }
+                                      : { display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
                                 >
-                                    <strong style={{ fontSize: 12, flex: 1 }}>{t.pair}</strong>
-                                    <Badge col={C.gold}>{t.timeframe}</Badge>
-                                    <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>
-                                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(t.entry_price)}</span>
-                                    <span style={{ fontWeight: 700, fontSize: 12, fontFamily: "var(--font-mono)", color: Number(t.pnl_usd) >= 0 ? C.green : C.red }}>
-                                        {usd(t.pnl_usd)}
-                                    </span>
-                                    <span style={{ fontWeight: 700, fontSize: 12, color: C.muted }}>{t.status}</span>
+                                    {mobile ? (
+                                        <>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "space-between" }}>
+                                                <strong style={{ fontSize: 12 }}>{t.pair}</strong>
+                                                <span style={{ fontWeight: 700, fontSize: 12, fontFamily: "var(--font-mono)", color: Number(t.pnl_usd) >= 0 ? C.green : C.red }}>
+                                                    {usd(t.pnl_usd)}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                                <Badge col={C.gold}>{t.timeframe}</Badge>
+                                                <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>
+                                                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(t.entry_price)}</span>
+                                                <span style={{ fontWeight: 700, fontSize: 11, color: C.muted }}>{t.status}</span>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <strong style={{ fontSize: 12, flex: 1 }}>{t.pair}</strong>
+                                            <Badge col={C.gold}>{t.timeframe}</Badge>
+                                            <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>
+                                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{fp(t.entry_price)}</span>
+                                            <span style={{ fontWeight: 700, fontSize: 12, fontFamily: "var(--font-mono)", color: Number(t.pnl_usd) >= 0 ? C.green : C.red }}>
+                                                {usd(t.pnl_usd)}
+                                            </span>
+                                            <span style={{ fontWeight: 700, fontSize: 12, color: C.muted }}>{t.status}</span>
+                                        </>
+                                    )}
                                 </Row>
                             ))
                         )}

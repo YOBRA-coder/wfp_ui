@@ -6,7 +6,16 @@ const fpc = (v) => v != null ? (v >= 0 ? "+" : "") + Number(v).toFixed(2) + "%" 
 const usd = (v) => v != null ? (Number(v) >= 0 ? "+$" : "-$") + Math.abs(Number(v)).toFixed(2) : "—";
 const ago = (s) => {
   if (!s) return "";
-  const d = Math.floor((Date.now() - new Date(s)) / 1000);
+  // The backend stores timestamps as naive SQLite `datetime('now')` UTC strings
+  // like "2026-09-02 10:00:00" — no timezone marker. `new Date(...)` on a string
+  // like that (space instead of "T", no "Z") gets parsed as LOCAL time by the
+  // browser, not UTC. For anyone outside UTC (e.g. Africa/Nairobi, UTC+3) that
+  // silently shifted every "ago" readout by the local offset — a fresh
+  // heartbeat or notification would read "3h ago" instead of "just now". Force
+  // UTC parsing by normalizing to a proper ISO string with a "Z" suffix.
+  const iso = /Z|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.replace(" ", "T")}Z`;
+  const d = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (d < 5)    return `just now`;
   if (d < 60)   return `${d}s ago`;
   if (d < 3600) return `${Math.floor(d / 60)}m ago`;
   return `${Math.floor(d / 3600)}h ago`;

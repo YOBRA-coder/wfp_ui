@@ -43,6 +43,20 @@ export default function Signals({ api }) {
   const [btData,  setBtData]  = useState(null);
   const [btBusy,  setBtBusy]  = useState(false);
   const [btErr,   setBtErr]   = useState("");
+  // Read-only viewer for a clicked History or Backtest item — deliberately
+  // separate from `sel`/Detail above: those entries aren't real persisted
+  // signals (no id), so they can't be copied/approved like a live one, and
+  // reusing that state would also fight with the gen tab's own live-candle
+  // websocket subscription. { pair, timeframe, direction, entry, sl, tp,
+  // confidence, label, kind: 'history'|'backtest' }
+  const [resSel,  setResSel]  = useState(null);
+  const [resBars, setResBars] = useState([]);
+  useEffect(() => {
+    if (!resSel) return;
+    setResBars([]);
+    api.get(`/prices/chart?pair=${resSel.pair}&timeframe=${resSel.timeframe}&candles=80`)
+      .then(d => setResBars(d.candles || [])).catch(() => {});
+  }, [resSel, api]);
   const [newIds,  setNewIds]  = useState(new Set());
   const [copiedIds, setCopiedIds] = useState(new Set());
   const [copyBusy,  setCopyBusy]  = useState(null);
@@ -183,25 +197,70 @@ export default function Signals({ api }) {
       setSigs(list);
       if (list.length) setSel(list[0]);
       loadUsage();
+      if (d.needs_approval) loadPendingReview();
     } catch (e) { setGenErr(e.message); }
     finally { setBusy(false); }
   };
 
   const loadHistory = async () => {
-    setHBusy(true);
+    setHBusy(true); setResSel(null);
     try { const d = await api.get(`/signals/history?pair=${hPair}&timeframe=${hTf}&period=${hPer}`); setHData(d); }
     catch (e) { alert(e.message); }
     finally { setHBusy(false); }
   };
 
   const loadBacktest = async () => {
-    setBtBusy(true); setBtErr(""); setBtData(null);
+    setBtBusy(true); setBtErr(""); setBtData(null); setResSel(null);
     try { const d = await api.get(`/signals/backtest?pair=${btPair}&timeframe=${btTf}&bars=${btBars}`); setBtData(d); }
     catch (e) { setBtErr(e.message); }
     finally { setBtBusy(false); }
   };
 
   // Signal detail panel
+  // Compact read-only result panel for a clicked History/Backtest item — same
+  // spirit as Detail below (metrics + chart) but no Copy/approve actions,
+  // since these aren't executable live signals.
+  const ResultDetail = () => {
+    if (!resSel) return null;
+    const buy = resSel.direction === "BUY";
+    const dc = buy ? C.green : C.red;
+    return (
+      <Card style={{ marginTop: 12, border: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>{resSel.pair}</div>
+            <Badge col={dc}>{buy ? "▲ BUY" : "▼ SELL"}</Badge>
+            <span style={{ fontSize: 11, color: C.muted }}>{resSel.label}</span>
+          </div>
+          <button onClick={() => setResSel(null)} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer" }}>×</button>
+        </div>
+        <Grid cols="repeat(4,minmax(0,1fr))" mobileCols="1fr 1fr" gap={10} style={{ marginBottom: 14 }}>
+          {[["ENTRY", fp(resSel.entry), C.text], ["STOP LOSS", fp(resSel.sl), C.red],
+            ["TAKE PROFIT", fp(resSel.tp), C.green], ["CONFIDENCE", `${resSel.confidence}%`, C.gold]].map(([l, v, c]) => (
+            <div key={l} style={{ background: `linear-gradient(160deg, ${c}12, ${C.surf2})`, border: `1px solid ${C.border}`,
+                                    borderTop: `2px solid ${c}`, borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+              <div style={{ fontSize: 9, color: C.muted, marginBottom: 4, fontWeight: 600 }}>{l}</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: c, fontFamily: "monospace" }}>{v}</div>
+            </div>
+          ))}
+        </Grid>
+        <ChartWrap label={`Chart around ${resSel.label}`}>
+          <CandleChart1
+            bars={resBars}
+            resetKey={`res_${resSel.pair}_${resSel.timeframe}_${resSel.entry}`}
+            pair={resSel.pair}
+            timeframe={resSel.timeframe}
+            api={api}
+            height={mobile ? 260 : 380}
+            entry={resSel.entry} sl={resSel.sl} tp={resSel.tp}
+            indicators={marketPrefs.indicators}
+            enableDrawing={false}
+          />
+        </ChartWrap>
+      </Card>
+    );
+  };
+
   const Detail = ({ s }) => {
     if (!s) return (
       <Card style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 }}>
@@ -364,9 +423,9 @@ export default function Signals({ api }) {
     <div style={{ padding: 20 }}>
       {/* Sub tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <Btn col={subTab === "gen" ? C.gold : C.muted} ghost={subTab !== "gen"} onClick={() => setSubTab("gen")} style={{ fontSize: 11, padding: "6px 14px" }}>⚡ Generate</Btn>
-        <Btn col={subTab === "history" ? C.gold : C.muted} ghost={subTab !== "history"} onClick={() => setSubTab("history")} style={{ fontSize: 11, padding: "6px 14px" }}>📊 History</Btn>
-        <Btn col={subTab === "backtest" ? C.gold : C.muted} ghost={subTab !== "backtest"} onClick={() => setSubTab("backtest")} style={{ fontSize: 11, padding: "6px 14px" }}>🧪 Backtest</Btn>
+        <Btn col={subTab === "gen" ? C.gold : C.muted} ghost={subTab !== "gen"} onClick={() => { setSubTab("gen"); setResSel(null); }} style={{ fontSize: 11, padding: "6px 14px" }}>⚡ Generate</Btn>
+        <Btn col={subTab === "history" ? C.gold : C.muted} ghost={subTab !== "history"} onClick={() => { setSubTab("history"); setResSel(null); }} style={{ fontSize: 11, padding: "6px 14px" }}>📊 History</Btn>
+        <Btn col={subTab === "backtest" ? C.gold : C.muted} ghost={subTab !== "backtest"} onClick={() => { setSubTab("backtest"); setResSel(null); }} style={{ fontSize: 11, padding: "6px 14px" }}>🧪 Backtest</Btn>
       </div>
 
       {pendingReview.length > 0 && (
@@ -512,7 +571,12 @@ export default function Signals({ api }) {
               </Grid>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 10 }}>
                 {[...(hData.signals || [])].reverse().map((s, i) => (
-                  <div key={i} style={{ background: C.surf2, border: `1px solid ${C.border}`, borderLeft: `3px solid ${s.direction === "BUY" ? C.green : C.red}`, borderRadius: 8, padding: 11 }}>
+                  <div key={i} onClick={() => setResSel({
+                        pair: s.pair, timeframe: s.timeframe, direction: s.direction,
+                        entry: s.entry_price, sl: s.stop_loss, tp: s.take_profit,
+                        confidence: s.confidence, label: String(s.generated_at || s.expires_at || "").slice(0, 16),
+                      })}
+                      style={{ background: C.surf2, border: `1px solid ${C.border}`, borderLeft: `3px solid ${s.direction === "BUY" ? C.green : C.red}`, borderRadius: 8, padding: 11, cursor: "pointer" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
                       <div style={{ display: "flex", gap: 5 }}>
                         <strong>{s.pair}</strong>
@@ -529,10 +593,11 @@ export default function Signals({ api }) {
                       <Badge col={{ STRONG: C.green, MODERATE: C.gold, WEAK: "#f97316", AVOID: C.red }[s.strength] || C.muted}>{s.strength}</Badge>
                       <Badge col={C.muted}>1:{s.risk_reward}</Badge>
                     </div>
-                    <div style={{ fontSize: 9, color: C.muted, marginTop: 5 }}>{String(s.generated_at || s.expires_at || "").slice(0, 16)}</div>
+                    <div style={{ fontSize: 9, color: C.muted, marginTop: 5 }}>{String(s.generated_at || s.expires_at || "").slice(0, 16)} · tap for chart</div>
                   </div>
                 ))}
               </div>
+              {resSel && <ResultDetail />}
             </>
           )}
         </Card>
@@ -582,19 +647,25 @@ export default function Signals({ api }) {
               <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginBottom: 8 }}>TRADE LOG (most recent {btData.trades?.length || 0})</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 8, maxHeight: 420, overflowY: "auto" }}>
                 {[...(btData.trades || [])].reverse().map((t, i) => (
-                  <div key={i} style={{ background: C.surf2, border: `1px solid ${C.border}`,
+                  <div key={i} onClick={() => setResSel({
+                        pair: t.pair || btData.pair, timeframe: t.timeframe || btData.timeframe, direction: t.direction,
+                        entry: t.entry, sl: t.sl, tp: t.tp, confidence: t.confidence,
+                        label: `${t.result.toUpperCase()} · ${String(t.entry_time).slice(0, 16)}`,
+                      })}
+                      style={{ background: C.surf2, border: `1px solid ${C.border}`,
                                           borderLeft: `3px solid ${t.result === "win" ? C.green : t.result === "loss" ? C.red : C.gold}`,
-                                          borderRadius: 8, padding: 10, fontSize: 11 }}>
+                                          borderRadius: 8, padding: 10, fontSize: 11, cursor: "pointer" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
                       <Badge col={t.direction === "BUY" ? C.green : C.red}>{t.direction}</Badge>
                       <Badge col={t.result === "win" ? C.green : t.result === "loss" ? C.red : C.muted}>{t.result.toUpperCase()}</Badge>
                     </div>
                     <div style={{ color: C.muted }}>Entry {fp(t.entry)} → Exit {fp(t.exit)}</div>
                     <div style={{ fontWeight: 700, color: t.pips >= 0 ? C.green : C.red, marginTop: 3 }}>{t.pips >= 0 ? "+" : ""}{t.pips} pips</div>
-                    <div style={{ fontSize: 9, color: C.muted, marginTop: 3 }}>{String(t.entry_time).slice(0, 16)} · {t.confidence}% conf</div>
+                    <div style={{ fontSize: 9, color: C.muted, marginTop: 3 }}>{String(t.entry_time).slice(0, 16)} · {t.confidence}% conf · tap for chart</div>
                   </div>
                 ))}
               </div>
+              {resSel && <ResultDetail />}
             </>
           )}
         </Card>

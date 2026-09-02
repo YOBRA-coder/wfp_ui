@@ -210,6 +210,18 @@ export default function CandleChart1({
   const previewRef = useRef(activePreview); previewRef.current = activePreview;
   const selectedIdRef = useRef(selectedDrawingId); selectedIdRef.current = selectedDrawingId;
   const hydratedRef = useRef(false);
+  // Set for the duration of a drawing-drag or SL/TP-drag gesture. The cloud
+  // persistence effect below checks this and skips saving while it's true —
+  // dragging used to fire a localStorage write AND an API PUT on every single
+  // pixel of pointer movement (drags can emit dozens of move events a
+  // second), which is what made drag feel laggy/stuttery instead of smooth.
+  // Now it saves once, when the gesture actually ends.
+  const isDraggingRef = useRef(false);
+  // Movement during a drag is coalesced to at most one state update per
+  // animation frame instead of one per raw pointer event, for the same
+  // "don't redo a full canvas redraw + React re-render 100+ times/sec" reason.
+  const pendingMoveRef = useRef(null);
+  const moveRafRef = useRef(null);
 
   useEffect(() => {
     const iv = setInterval(() => setClock((c) => c + 1), 5000);
@@ -242,6 +254,7 @@ export default function CandleChart1({
   // Cloud sync saving
   useEffect(() => {
     if (!enableDrawing) return;
+    if (isDraggingRef.current) return; // mid-drag — see isDraggingRef above
     try { localStorage.setItem(storageKey, JSON.stringify(drawings)); } catch {}
     if (api && pair && timeframe && hydratedRef.current) {
       api.put("/prefs/drawings", { pair, timeframe, rects: drawings }).catch(() => {});
@@ -394,6 +407,7 @@ export default function CandleChart1({
         e.preventDefault();
         setSelectedDrawingId(clicked.id);
         setIsMoving(true);
+        isDraggingRef.current = true;
         moveOffsetRef.current = { type: clicked.type, baseT: pt.t, baseP: pt.p, d: { ...clicked } };
       } else {
         setSelectedDrawingId(null);
@@ -412,7 +426,10 @@ export default function CandleChart1({
             if (dist <= HIT_PX && dist < closestDist) { closest = t; closestDist = dist; }
           });
           if (closest) {
-            onTradeSelectRef.current?.(closest);
+            // Clicking the trade that's already selected toggles it off —
+            // previously the only way to deselect was clicking empty chart
+            // space; clicking the same trade line again just kept it selected.
+            onTradeSelectRef.current?.(closest.id === selectedTradeIdRef.current ? null : closest);
           } else if (selectedTradeIdRef.current != null) {
             // Clicked empty chart space while a trade was selected — this is
             // the only way to clear a selection today (there was previously
@@ -453,32 +470,43 @@ export default function CandleChart1({
     if (isMoving && moveOffsetRef.current) {
       e.preventDefault();
       const offset = moveOffsetRef.current;
-      const deltaP = pt.p - offset.baseP;
-      const deltaT = pt.t - offset.baseT;
+      // Coalesce to one update per animation frame (see moveRafRef above)
+      // instead of computing + setDrawings on every raw pointer event.
+      pendingMoveRef.current = { pt, offset };
+      if (moveRafRef.current == null) {
+        moveRafRef.current = requestAnimationFrame(() => {
+          moveRafRef.current = null;
+          const pend = pendingMoveRef.current;
+          if (!pend) return;
+          const { pt, offset } = pend;
+          const deltaP = pt.p - offset.baseP;
+          const deltaT = pt.t - offset.baseT;
 
-      setDrawings(prev => prev.map(item => {
-        if (item.id !== offset.d.id) return item;
-        if (item.type === "horizontal") {
-          return { ...item, p1: offset.d.p1 + deltaP, p2: offset.d.p2 + deltaP };
-        }
-        if (item.type === "vertical") {
-          const origT1 = typeof offset.d.t1 === "number" ? offset.d.t1 : toUnixTime(offset.d.t1);
-          const newT = origT1 + deltaT;
-          return { ...item, t1: newT, t2: newT };
-        }
-        // trend / rect — translate BOTH endpoints by the same delta so the
-        // whole shape slides as one piece instead of one end stretching
-        // toward the cursor while the other stays frozen.
-        const origT1 = typeof offset.d.t1 === "number" ? offset.d.t1 : toUnixTime(offset.d.t1);
-        const origT2 = typeof offset.d.t2 === "number" ? offset.d.t2 : toUnixTime(offset.d.t2);
-        return {
-          ...item,
-          t1: origT1 + deltaT,
-          t2: origT2 + deltaT,
-          p1: offset.d.p1 + deltaP,
-          p2: offset.d.p2 + deltaP,
-        };
-      }));
+          setDrawings(prev => prev.map(item => {
+            if (item.id !== offset.d.id) return item;
+            if (item.type === "horizontal") {
+              return { ...item, p1: offset.d.p1 + deltaP, p2: offset.d.p2 + deltaP };
+            }
+            if (item.type === "vertical") {
+              const origT1 = typeof offset.d.t1 === "number" ? offset.d.t1 : toUnixTime(offset.d.t1);
+              const newT = origT1 + deltaT;
+              return { ...item, t1: newT, t2: newT };
+            }
+            // trend / rect — translate BOTH endpoints by the same delta so the
+            // whole shape slides as one piece instead of one end stretching
+            // toward the cursor while the other stays frozen.
+            const origT1 = typeof offset.d.t1 === "number" ? offset.d.t1 : toUnixTime(offset.d.t1);
+            const origT2 = typeof offset.d.t2 === "number" ? offset.d.t2 : toUnixTime(offset.d.t2);
+            return {
+              ...item,
+              t1: origT1 + deltaT,
+              t2: origT2 + deltaT,
+              p1: offset.d.p1 + deltaP,
+              p2: offset.d.p2 + deltaP,
+            };
+          }));
+        });
+      }
       return;
     }
 
@@ -498,6 +526,15 @@ export default function CandleChart1({
     if (isMoving) {
       setIsMoving(false);
       moveOffsetRef.current = null;
+      isDraggingRef.current = false;
+      if (moveRafRef.current != null) { cancelAnimationFrame(moveRafRef.current); moveRafRef.current = null; }
+      pendingMoveRef.current = null;
+      // The persistence effect skipped every intermediate move — save the
+      // final resting position now that the drag is actually over.
+      try { localStorage.setItem(storageKey, JSON.stringify(drawingsRef.current)); } catch {}
+      if (api && pair && timeframe && hydratedRef.current) {
+        api.put("/prefs/drawings", { pair, timeframe, rects: drawingsRef.current }).catch(() => {});
+      }
       return;
     }
 
@@ -565,16 +602,50 @@ export default function CandleChart1({
 
     chart.subscribeClick((param) => {
       if (!param.point || tool !== "none") return;
+      const ts = chart.timeScale();
+      const cx = param.point.x, cy = param.point.y;
+
+      // Drawings take priority over trade-line hits, mirroring the overlay's
+      // own handleDrawStart priority — this is what lets a drawing be tapped
+      // and selected even while the overlay is fully pass-through (see the
+      // pointerEvents note below for why that pass-through matters).
+      const TOL = 12;
+      const hitDrawing = [...drawingsRef.current].reverse().find((d) => {
+        const x1 = ts.timeToCoordinate(typeof d.t1 === "number" ? d.t1 : toUnixTime(d.t1));
+        const y1 = candleSeries.priceToCoordinate(d.p1);
+        if (x1 == null || y1 == null) return false;
+        if (d.type === "horizontal") return Math.abs(y1 - cy) <= TOL;
+        if (d.type === "vertical") return Math.abs(x1 - cx) <= TOL;
+        if (d.type === "trend" || d.type === "rect") {
+          const x2 = ts.timeToCoordinate(typeof d.t2 === "number" ? d.t2 : toUnixTime(d.t2));
+          const y2 = candleSeries.priceToCoordinate(d.p2);
+          if (x2 == null || y2 == null) return false;
+          if (Math.abs(x1 - cx) <= TOL && Math.abs(y1 - cy) <= TOL) return true;
+          if (Math.abs(x2 - cx) <= TOL && Math.abs(y2 - cy) <= TOL) return true;
+          if (d.type === "rect") {
+            const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+            const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+            return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
+          }
+        }
+        return false;
+      });
+      if (hitDrawing) { setSelectedDrawingId(hitDrawing.id); return; }
+
       const HIT_PX = 10;
       let closest = null, closestDist = Infinity;
       (tradesRef.current || []).forEach((t) => {
         const y = candleSeries.priceToCoordinate(Number(t.entry_price));
         if (y == null) return;
-        const dist = Math.abs(y - param.point.y);
+        const dist = Math.abs(y - cy);
         if (dist <= HIT_PX && dist < closestDist) { closest = t; closestDist = dist; }
       });
       if (closest) {
-        onTradeSelectRef.current?.(closest);
+        // Tapping the already-selected trade again now deselects it, instead
+        // of only ever being able to select (never toggle off by re-tapping).
+        onTradeSelectRef.current?.(closest.id === selectedTradeIdRef.current ? null : closest);
+      } else if (selectedIdRef.current) {
+        setSelectedDrawingId(null);
       } else if (selectedTradeIdRef.current != null) {
         onTradeSelectRef.current?.(null);
       }
@@ -804,7 +875,20 @@ export default function CandleChart1({
             style={{
               position: "absolute", left: 0, top: 0, width: "100%", height: "100%",
               zIndex: 5, cursor: tool !== "none" ? "crosshair" : "default",
-              pointerEvents: (tool !== "none" || selectedDrawingId || drawings.length > 0 || draggableSlTp) ? "auto" : "none", touchAction: "none"
+              // Used to also go "auto" whenever drawings.length > 0 — meaning
+              // once you'd drawn a single line, this fully-covering overlay
+              // captured every touch/click forever after, permanently
+              // blocking the chart's own native pan/scroll underneath (the
+              // "can't scroll while drawing" and "clearing drawings makes the
+              // chart scrollable again" reports were the same bug: clearing
+              // drawings was the only thing that ever made this condition
+              // false again). Selecting/tapping an existing drawing or trade
+              // now happens via chart.subscribeClick on the native chart
+              // canvas instead (see above), which coexists with panning, so
+              // this overlay only needs to capture input while there's an
+              // active tool, an in-progress drag, or SL/TP dragging enabled.
+              pointerEvents: (tool !== "none" || selectedDrawingId || isMoving || draggableSlTp) ? "auto" : "none",
+              touchAction: "none"
             }}
           />
         )}

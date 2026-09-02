@@ -137,6 +137,17 @@ const SECTIONS = [
       "Default lot size and risk % are the starting point pre-filled when you manually copy a signal — you can still adjust per trade.",
     ],
   },
+  {
+    id: "risk",
+    icon: "bell",
+    title: "Risk disclosure",
+    body: [
+      "You accepted ForexPro's full risk disclosure the first time you logged in — it only needs to be shown once, so it won't pop up again on future logins.",
+      "In short: forex/CFD trading and copy trading carry a high risk of loss, leverage amplifies both gains and losses, signals and provider track records are not guarantees of future results, and you are responsible for your own trading decisions — nothing in the app is financial advice.",
+      "Demo balances don't reflect real trading conditions, and any real MT5-linked trading is entirely between you and your broker — ForexPro doesn't hold your funds or execute trades as a broker.",
+      "Want the full wording again? Contact support from Settings and ask for the risk disclosure text.",
+    ],
+  },
 ];
 
 function AccordionItem({ section, isOpen, onToggle }) {

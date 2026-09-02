@@ -214,6 +214,9 @@ export default function Billing({ api, user, setUser }) {
                     {money(price, ccy)}
                   </div>
                   <div style={{ fontSize: 10, color: C.muted, marginBottom: 12 }}>{p.per ? `per ${p.per}` : "forever"}</div>
+                  {p.note && (
+                    <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic", marginBottom: 10 }}>{p.note}</div>
+                  )}
                   <ul style={{ listStyle: "none", padding: 0, margin: "0 0 16px", flex: 1 }}>
                     {p.features.map((f) => (
                       <li key={f} style={{ fontSize: 11, color: C.text, marginBottom: 6, display: "flex", gap: 6 }}>

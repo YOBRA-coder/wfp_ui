@@ -2,9 +2,9 @@
 import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { C } from "../utils/constants.jsx";
-import { Card, SectionTitle, Stat, Badge, Row, Grid, Btn, FG, Inp, Sel, Modal, OkBox, InfoBox, ErrBox } from "../shared/Shared.jsx";
+import { Card, SectionTitle, Stat, Badge, Row, Grid, Btn, FG, Inp, Sel, Modal, OkBox, InfoBox, ErrBox, useMobile } from "../shared/Shared.jsx";
 import { ago, fp, f1 } from "../utils/utils.js";
-import { PAIRS } from "../components/Charts.jsx";
+import { PAIRS, CandleChart1 } from "../components/Charts.jsx";
 
 // Lets a follower pick exactly which pairs to auto-copy from a provider.
 // Empty = all pairs (mirrors the backend's `not pf` fallback in forexpro_main.py).
@@ -58,6 +58,13 @@ export default function Providers({ api }) {
   const [showFollowers, setShowFollowers] = useState(false);
   const [earnings, setEarnings] = useState(null);
   const [showEarnings, setShowEarnings] = useState(false);
+  // A Recent Signals row had cursor:"pointer" styling but no onClick at all —
+  // looked tappable, did nothing. Now tapping one opens this read-only panel:
+  // the signal's own chart (its chart_data already has the OHLCV baked in
+  // from generation time, no extra fetch needed) plus how many followers
+  // copied it and how that went for them in aggregate.
+  const [sigDetail, setSigDetail] = useState(null);
+  const mobile = useMobile();
   const [regForm, setRegForm]       = useState({ display_name: "", description: "", monthly_fee: 0,
     subscription_type: "monthly", commission_pct: 25, preferred_pairs: [], preferred_timeframes: [],
     max_signals_per_day: 10, risk_notes: "" });
@@ -156,6 +163,7 @@ export default function Providers({ api }) {
   };
 
   const openDetail = async p => {
+    setSigDetail(null);
     try { setDetail(await api.get(`/providers/${p.id}`)); }
     catch {}
   };
@@ -473,16 +481,88 @@ export default function Providers({ api }) {
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, marginBottom: 14 }}>{detail.description}</div>
             <SectionTitle>Recent Signals ({detail.recent_signals?.length || 0})</SectionTitle>
             {(detail.recent_signals || []).slice(0, 8).map(s => (
-              <Row key={s.id} style={{ display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
-                <strong style={{ flex: 1 }}>{s.pair}</strong>
-                <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
-                <Badge col={C.muted}>{s.timeframe}</Badge>
-                <span style={{ fontFamily: "monospace" }}>{fp(s.entry_price)}</span>
-                <Badge col={{ win: C.blue, loss: C.red, breakeven: "#559ebb" }[s.result] || C.muted}>{s.result} {s.pnl_pips}p</Badge>
-                <span style={{ color: C.gold }}>{s.confidence}%</span>
-                <Badge col={{ STRONG: C.green, MODERATE: C.gold, WEAK: "#f97316" }[s.strength] || C.muted}>{s.strength}</Badge>
+              <Row key={s.id} onClick={() => setSigDetail(s)}
+                   style={mobile
+                     ? { cursor: "pointer" }
+                     : { display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+                {mobile ? (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "space-between" }}>
+                      <strong>{s.pair}</strong>
+                      <Badge col={{ win: C.blue, loss: C.red, breakeven: "#559ebb" }[s.result] || C.muted}>{s.result} {s.pnl_pips}p</Badge>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
+                      <Badge col={C.muted}>{s.timeframe}</Badge>
+                      <span style={{ fontFamily: "monospace" }}>{fp(s.entry_price)}</span>
+                      <span style={{ color: C.gold }}>{s.confidence}%</span>
+                      {s.copiers_count > 0 && <span style={{ color: C.muted, fontSize: 11 }}>· {s.copiers_count} copied</span>}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <strong style={{ flex: 1 }}>{s.pair}</strong>
+                    <Badge col={s.direction === "BUY" ? C.green : C.red}>{s.direction}</Badge>
+                    <Badge col={C.muted}>{s.timeframe}</Badge>
+                    <span style={{ fontFamily: "monospace" }}>{fp(s.entry_price)}</span>
+                    <Badge col={{ win: C.blue, loss: C.red, breakeven: "#559ebb" }[s.result] || C.muted}>{s.result} {s.pnl_pips}p</Badge>
+                    <span style={{ color: C.gold }}>{s.confidence}%</span>
+                    <Badge col={{ STRONG: C.green, MODERATE: C.gold, WEAK: "#f97316" }[s.strength] || C.muted}>{s.strength}</Badge>
+                    {s.copiers_count > 0 && <span style={{ color: C.muted, fontSize: 11 }}>{s.copiers_count} copied</span>}
+                  </>
+                )}
               </Row>
             ))}
+
+            {sigDetail && (
+              <Card style={{ marginTop: 14, border: `1px solid ${C.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <strong style={{ fontSize: 15 }}>{sigDetail.pair}</strong>
+                    <Badge col={sigDetail.direction === "BUY" ? C.green : C.red}>{sigDetail.direction}</Badge>
+                    <Badge col={C.muted}>{sigDetail.timeframe}</Badge>
+                  </div>
+                  <button onClick={() => setSigDetail(null)} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer" }}>×</button>
+                </div>
+                <Grid cols="repeat(3,minmax(0,1fr))" mobileCols="1fr 1fr 1fr" gap={8} style={{ marginBottom: 12 }}>
+                  <Stat label="Entry" value={fp(sigDetail.entry_price)} />
+                  <Stat label="Stop Loss" value={fp(sigDetail.stop_loss)} color={C.red} />
+                  <Stat label="Take Profit" value={fp(sigDetail.take_profit)} color={C.green} />
+                </Grid>
+                {/* "people copied" — count + how it went for them in aggregate, not who they are */}
+                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>
+                  {sigDetail.copiers_count > 0 ? (
+                    <>
+                      <strong>{sigDetail.copiers_count}</strong> follower{sigDetail.copiers_count === 1 ? "" : "s"} copied this signal
+                      {sigDetail.copiers_still_open > 0 && <> · <span style={{ color: C.gold }}>{sigDetail.copiers_still_open} still open</span></>}
+                      {(sigDetail.copiers_wins > 0 || sigDetail.copiers_losses > 0) && (
+                        <> · <span style={{ color: C.green }}>{sigDetail.copiers_wins} won</span> / <span style={{ color: C.red }}>{sigDetail.copiers_losses} lost</span></>
+                      )}
+                      {sigDetail.copiers_avg_pips != null && (
+                        <> · avg <span style={{ color: sigDetail.copiers_avg_pips >= 0 ? C.green : C.red, fontWeight: 700 }}>
+                          {sigDetail.copiers_avg_pips >= 0 ? "+" : ""}{sigDetail.copiers_avg_pips}p</span></>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ color: C.muted }}>No followers had this signal copy to them.</span>
+                  )}
+                </div>
+                {sigDetail.ohlcv?.length > 0 && (
+                  <CandleChart1
+                    bars={sigDetail.ohlcv}
+                    resetKey={`prov_sig_${sigDetail.id}`}
+                    pair={sigDetail.pair}
+                    timeframe={sigDetail.timeframe}
+                    height={mobile ? 260 : 380}
+                    entry={sigDetail.entry_price} sl={sigDetail.stop_loss} tp={sigDetail.take_profit}
+                    markers={sigDetail.markers || []}
+                    supportResistance={sigDetail.support_resistance || []}
+                    trendline={sigDetail.trendline}
+                    enableDrawing={false}
+                  />
+                )}
+              </Card>
+            )}
           </Card>
         ) : (
           <Card style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 220, textAlign: "center" }}>
